@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Backgrounds & Surfaces */
+    --background: 220 20% 98%; /* #F9FAFB */
+    --foreground: 220 26% 17%; /* #1F2937 */
+
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 220 26% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 26% 17%;
+
+    /* Primary Brand - Earthy Green #2E7D32 */
+    --primary: 123 46% 34%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Warm Harvest Orange #F57C00 */
+    --secondary: 30 100% 48%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%; /* #6B7280 */
+
+    /* Accent / primary-soft #E8F5E9 */
+    --accent: 122 39% 93%;
+    --accent-foreground: 123 46% 34%;
+
+    /* Semantic */
+    --destructive: 0 72% 51%; /* #DC2626 */
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 36%; /* #16A34A */
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 44%; /* #D97706 */
+    --warning-foreground: 0 0% 100%;
+    --info: 221 83% 53%; /* #2563EB */
+    --info-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%; /* #E5E7EB */
+    --input: 220 13% 91%;
+    --ring: 123 46% 34%;
+
+    --radius: 0.5rem;
+
+    --badge-green-bg: 122 39% 93%;
+    --badge-green-text: 123 46% 25%;
+    --badge-yellow-bg: 48 96% 89%;
+    --badge-yellow-text: 32 95% 28%;
+    --badge-red-bg: 0 93% 94%;
+    --badge-red-text: 0 74% 35%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 26% 17%;
+    --sidebar-primary: 123 46% 34%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 122 39% 93%;
+    --sidebar-accent-foreground: 123 46% 34%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 123 46% 34%;
+  }
+
+  .dark {
+    --background: 220 20% 7%;
+    --foreground: 0 0% 95%;
+    --card: 220 20% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 220 20% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 123 54% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 16%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 220 14% 16%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 120 10% 15%;
+    --accent-foreground: 123 54% 50%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 220 14% 18%;
+    --input: 220 14% 18%;
+    --ring: 123 54% 40%;
+    --sidebar-background: 220 20% 7%;
+    --sidebar-foreground: 0 0% 80%;
+    --sidebar-primary: 123 54% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 120 10% 15%;
+    --sidebar-accent-foreground: 123 54% 50%;
+    --sidebar-border: 220 14% 18%;
+    --sidebar-ring: 123 54% 40%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
