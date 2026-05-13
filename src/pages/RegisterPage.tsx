@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sprout, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RegisterPageProps {
   onRegistered: () => void;
@@ -21,6 +22,10 @@ const RegisterPage = ({ onRegistered }: RegisterPageProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+   // Add this import at the top
+
+// ... inside RegisterPage component:
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !mobile || !password) {
@@ -33,18 +38,33 @@ const RegisterPage = ({ onRegistered }: RegisterPageProps) => {
     }
     setLoading(true);
 
-    // Mocked Supabase signUp + profiles insert.
-    // When Lovable Cloud is enabled, replace with:
-    //   const { data, error } = await supabase.auth.signUp({ email, password,
-    //     options: { emailRedirectTo: `${window.location.origin}/dashboard` } });
-    //   await supabase.from('profiles').insert({ id: data.user.id, name, mobile, role });
-    await new Promise(r => setTimeout(r, 800));
+    // 🚀 CONNECTED TO SUPABASE: Uses the exact same logic as your mobile app
+    const { data, error } = await supabase.auth.signUp({
+      email: `${mobile.trim()}@gmail.com`,
+      password: password,
+      options: {
+        data: {
+          name: name.trim(),
+          first_name: name.trim().split(' ')[0],
+          last_name: name.trim().split(' ').slice(1).join(' '),
+          mobile: mobile.trim(),
+          role: role // 'TH'
+        }
+      }
+    });
+
+    setLoading(false);
+
+    if (error) {
+      toast({ title: 'Registration Failed', description: error.message, variant: 'destructive' });
+      return;
+    }
 
     toast({
       title: 'Account created',
       description: `Welcome ${name}! Registered as ${role}.`,
     });
-    setLoading(false);
+    
     onRegistered();
     navigate('/dashboard');
   };
