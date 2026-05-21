@@ -16,12 +16,36 @@ const FarmersPage = ({ onLogout }: Props) => {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
+      const { data: farmersData, error } = await supabase
         .from('farmers')
         .select('*, profiles:se_id(name)')
         .order('created_at', { ascending: false });
+
       if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
-      setRows((data || []) as any);
+
+      // Fetch farmer drafts (🚀 Added 'as any')
+      const { data: draftsData } = await supabase
+        .from('drafts' as any)
+        .select('*, profiles:se_id(name)')
+        .eq('entity_type', 'farmer');
+
+      // Format drafts (🚀 Added 'as any[]' and '(draft: any)')
+      const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => ({
+        id: draft.entity_id,
+        se_id: draft.se_id,
+        full_name: draft.draft_data?.fullName || 'Incomplete Farmer',
+        mobile: draft.draft_data?.mobile || '—',
+        village: draft.draft_data?.village || '—',
+        status: 'DRAFT',
+        created_at: draft.updated_at,
+        profiles: draft.profiles
+      }));
+
+      const combined = [...(farmersData || []), ...formattedDrafts].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setRows(combined as any);
       setLoading(false);
     })();
   }, [toast]);

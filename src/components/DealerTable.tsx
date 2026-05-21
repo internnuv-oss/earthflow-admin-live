@@ -67,7 +67,9 @@ const DealerTable = ({ rows, onSelect }: { rows: DealerRow[]; onSelect: (r: Deal
     },
     {
       key: 'status', header: 'Status', className: 'text-center', headerClassName: 'font-semibold text-center',
-      accessor: r => <Badge variant={r?.status === 'APPROVED' ? 'default' : 'secondary'}>{r?.status || 'DRAFT'}</Badge>,
+      accessor: r => r?.status === 'DRAFT' 
+        ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
+        : <Badge variant={r?.status === 'APPROVED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
     },
   ];
 

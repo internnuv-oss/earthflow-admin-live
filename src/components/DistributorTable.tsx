@@ -76,7 +76,18 @@ const DistributorTable = ({ rows, onSelect }: { rows: DistributorRow[]; onSelect
     },
     {
       key: 'status', header: 'Status', className: 'text-center', headerClassName: 'font-semibold text-center',
-      accessor: r => <Badge variant={r?.status === 'APPROVED' ? 'default' : 'secondary'}>{r?.status || 'DRAFT'}</Badge>,
+      accessor: r => {
+        if (r?.status === 'DRAFT') {
+           return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>;
+        }
+        
+        const colors: Record<string, string> = { 
+          APPROVED: 'bg-green-500/10 text-green-700 hover:bg-green-500/20 border-green-200', 
+          REJECTED: 'bg-red-500/10 text-red-700 hover:bg-red-500/20 border-red-200', 
+          SUBMITTED: 'bg-blue-500/10 text-blue-700 hover:bg-blue-500/20 border-blue-200' 
+        };
+        return <Badge className={colors[r?.status || ''] || 'bg-gray-100 text-gray-700'} variant="outline">{r?.status || 'Pending'}</Badge>;
+      },
     },
   ];
 

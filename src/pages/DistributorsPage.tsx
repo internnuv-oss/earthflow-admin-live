@@ -16,12 +16,39 @@ const DistributorsPage = ({ onLogout }: Props) => {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
+      const { data: distData, error } = await supabase
         .from('distributors')
         .select('*, profiles:se_id(name)')
         .order('created_at', { ascending: false });
+
       if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
-      setRows((data || []) as any);
+
+      // Fetch distributor drafts (🚀 Added 'as any')
+      const { data: draftsData } = await supabase
+        .from('drafts' as any)
+        .select('*, profiles:se_id(name)')
+        .eq('entity_type', 'distributor');
+
+      // Format drafts (🚀 Added 'as any[]' and '(draft: any)')
+      const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => ({
+        id: draft.entity_id,
+        se_id: draft.se_id,
+        firm_name: draft.draft_data?.firmName || 'Incomplete Distributor',
+        contact_person: draft.draft_data?.contactPerson || '—',
+        contact_mobile: draft.draft_data?.contactMobile || '—',
+        city: draft.draft_data?.city || '—',
+        status: 'DRAFT',
+        total_score: 0,
+        band: '—',
+        created_at: draft.updated_at,
+        profiles: draft.profiles
+      }));
+
+      const combined = [...(distData || []), ...formattedDrafts].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setRows(combined as any);
       setLoading(false);
     })();
   }, [toast]);

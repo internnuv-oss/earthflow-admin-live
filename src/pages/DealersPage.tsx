@@ -16,12 +16,41 @@ const DealersPage = ({ onLogout }: Props) => {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
+      // 1. Fetch completed dealers
+      const { data: dealersData, error: dealersError } = await supabase
         .from('dealers')
         .select('*, profiles:se_id(name)')
         .order('created_at', { ascending: false });
-      if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
-      setRows((data || []) as any);
+
+      if (dealersError) toast({ title: 'Failed to load', description: dealersError.message, variant: 'destructive' });
+
+      // 2. Fetch dealer drafts (🚀 Added 'as any' to bypass strict typing)
+      const { data: draftsData } = await supabase
+        .from('drafts' as any)
+        .select('*, profiles:se_id(name)')
+        .eq('entity_type', 'dealer');
+
+      // 3. Format drafts (🚀 Added 'as any[]' and '(draft: any)' to bypass property errors)
+      const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => ({
+        id: draft.entity_id,
+        se_id: draft.se_id,
+        primary_shop_name: draft.draft_data?.shopName || 'Incomplete Dealer',
+        contact_person: draft.draft_data?.owners?.[0]?.name || '—',
+        contact_mobile: draft.draft_data?.contactMobile || '—',
+        primary_address: draft.draft_data?.address || '—',
+        category: '—',
+        status: 'DRAFT', 
+        total_score: 0,
+        created_at: draft.updated_at,
+        profiles: draft.profiles
+      }));
+
+      // 4. Combine and sort newest first
+      const combined = [...(dealersData || []), ...formattedDrafts].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setRows(combined as any);
       setLoading(false);
     })();
   }, [toast]);
