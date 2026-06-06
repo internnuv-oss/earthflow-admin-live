@@ -70,7 +70,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
           <Sprout className="h-5 w-5 text-primary" />
         </div>
         <div className="min-w-0">
-          <h1 className="text-sm font-bold leading-tight truncate">AgriDealer Admin</h1>
+          <h1 className="text-sm font-bold leading-tight truncate">Field Commander Admin</h1>
           <p className="text-xs text-muted-foreground truncate">Territory Head</p>
         </div>
       </div>

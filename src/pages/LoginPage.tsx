@@ -49,7 +49,7 @@ const LoginPage = () => {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
             <Sprout className="h-7 w-7 text-primary" />
           </div>
-          <CardTitle className="text-2xl font-bold">AgriDealer Admin</CardTitle>
+          <CardTitle className="text-2xl font-bold">Field Commander Admin</CardTitle>
           <CardDescription>{mode === 'signin' ? 'Territory Head Dashboard Login' : 'Create an admin account'}</CardDescription>
         </CardHeader>
         <CardContent>

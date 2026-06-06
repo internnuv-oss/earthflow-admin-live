@@ -44,7 +44,7 @@ const AppLayout = ({ children, onLogout }: AppLayoutProps) => {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
               <Sprout className="h-4 w-4 text-primary" />
             </div>
-            <span className="text-sm font-semibold">AgriDealer Admin</span>
+            <span className="text-sm font-semibold">Field Commander Admin</span>
           </div>
 
           <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">

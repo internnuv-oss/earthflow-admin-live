@@ -12,10 +12,23 @@ const DistributorsPage = ({ onLogout }: Props) => {
   const [rows, setRows] = useState<DistributorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<DistributorRow | null>(null);
+  const [seList, setSeList] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
     (async () => {
+      // 1. Fetch all SEs from profiles table to populate the filter dropdown
+      const { data: seData } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('role', 'SE');
+      
+      if (seData) {
+        const uniqueNames = Array.from(new Set(seData.map(se => se.name).filter(Boolean)));
+        setSeList(uniqueNames.map(name => ({ value: name as string, label: name as string })));
+      }
+
+      // 2. Fetch completed distributors
       const { data: distData, error } = await supabase
         .from('distributors')
         .select('*, profiles:se_id(name)')
@@ -23,13 +36,13 @@ const DistributorsPage = ({ onLogout }: Props) => {
 
       if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
 
-      // Fetch distributor drafts (🚀 Added 'as any')
+      // 3. Fetch distributor drafts
       const { data: draftsData } = await supabase
         .from('drafts' as any)
         .select('*, profiles:se_id(name)')
         .eq('entity_type', 'distributor');
 
-      // Format drafts (🚀 Added 'as any[]' and '(draft: any)')
+      // 4. Format drafts
       const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => ({
         id: draft.entity_id,
         se_id: draft.se_id,
@@ -44,6 +57,7 @@ const DistributorsPage = ({ onLogout }: Props) => {
         profiles: draft.profiles
       }));
 
+      // 5. Combine and sort newest first
       const combined = [...(distData || []), ...formattedDrafts].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
@@ -63,7 +77,7 @@ const DistributorsPage = ({ onLogout }: Props) => {
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : (
-          <DistributorTable rows={rows} onSelect={setSelected} />
+          <DistributorTable rows={rows} onSelect={setSelected} seOptions={seList} />
         )}
       </div>
       <DistributorDetailSheet distributor={selected} open={!!selected} onClose={() => setSelected(null)} />

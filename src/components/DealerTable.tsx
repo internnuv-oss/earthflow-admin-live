@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { DataTable, DataTableColumn } from './DataTable';
+import { DataTable, DataTableColumn, DataTableFilter } from './DataTable';
 import { MapPin, Phone, Store } from 'lucide-react';
 
 export interface DealerRow {
@@ -24,6 +25,24 @@ export interface DealerRow {
   profiles?: { name: string | null } | null;
 }
 
+// --- DATA SCANNING FUNCTIONS ---
+
+const getUniqueCategories = (rows: DealerRow[]) => {
+  const categories = new Set<string>();
+  rows.forEach(r => {
+    if (r.category && r.category !== '—') categories.add(r.category);
+  });
+  return Array.from(categories).map(c => ({ value: c, label: c }));
+};
+
+const getUniqueStatuses = (rows: DealerRow[]) => {
+  const statuses = new Set<string>();
+  rows.forEach(r => {
+    if (r.status) statuses.add(r.status);
+  });
+  return Array.from(statuses).map(s => ({ value: s, label: s }));
+};
+
 const categoryVariant = (c?: string | null) => {
   if (!c) return 'secondary' as const;
   const v = c.toLowerCase();
@@ -32,10 +51,42 @@ const categoryVariant = (c?: string | null) => {
   return 'secondary' as const;
 };
 
-const DealerTable = ({ rows, onSelect }: { rows: DealerRow[]; onSelect: (r: DealerRow) => void }) => {
+// Added seOptions to props
+interface DealerTableProps {
+  rows: DealerRow[];
+  onSelect: (r: DealerRow) => void;
+  seOptions?: { value: string; label: string }[];
+}
+
+const DealerTable = ({ rows, onSelect, seOptions = [] }: DealerTableProps) => {
+
+  // Define Filters
+  const filters: DataTableFilter<DealerRow>[] = useMemo(() => [
+    {
+      key: 'status',
+      label: 'Status',
+      options: getUniqueStatuses(rows),
+      predicate: (row, value) => row.status === value,
+    },
+    {
+      key: 'category',
+      label: 'Category',
+      options: getUniqueCategories(rows),
+      predicate: (row, value) => row.category === value,
+    },
+    {
+      key: 'se',
+      label: 'Onboarded By',
+      options: seOptions.length > 0 ? seOptions : [],
+      predicate: (row, value) => row.profiles?.name === value,
+    }
+  ], [rows, seOptions]);
+
+  // Define Columns with SORTING enabled
   const columns: DataTableColumn<DealerRow>[] = [
     {
-      key: 'primary_shop_name', header: 'Shop Name', sortable: true,
+      key: 'primary_shop_name', header: 'Shop Name', 
+      sortable: true,
       sortValue: r => (r?.primary_shop_name || '').toLowerCase(),
       accessor: r => (
         <div className="flex items-center gap-2">
@@ -44,15 +95,24 @@ const DealerTable = ({ rows, onSelect }: { rows: DealerRow[]; onSelect: (r: Deal
         </div>
       ),
     },
-    { key: 'contact_person', header: 'Contact Person', accessor: r => r?.contact_person || '—' },
+    { 
+      key: 'contact_person', header: 'Contact Person', 
+      sortable: true,
+      sortValue: r => (r?.contact_person || '').toLowerCase(),
+      accessor: r => r?.contact_person || '—' 
+    },
     {
       key: 'contact_mobile', header: 'Mobile',
+      sortable: true,
+      sortValue: r => r?.contact_mobile || '',
       accessor: r => r?.contact_mobile ? (
         <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{r.contact_mobile}</span>
       ) : '—',
     },
     {
       key: 'primary_address', header: 'Address',
+      sortable: true,
+      sortValue: r => (r?.primary_address || '').toLowerCase(),
       accessor: r => (
         <span className="inline-flex items-center gap-1.5 max-w-[260px] truncate">
           <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -60,13 +120,22 @@ const DealerTable = ({ rows, onSelect }: { rows: DealerRow[]; onSelect: (r: Deal
         </span>
       ),
     },
-    { key: 'se', header: 'Onboarded By', accessor: r => <span className="text-muted-foreground text-sm">{r?.profiles?.name || '—'}</span> },
+    { 
+      key: 'se', header: 'Onboarded By', 
+      sortable: true,
+      sortValue: r => (r?.profiles?.name || '').toLowerCase(),
+      accessor: r => <span className="text-muted-foreground text-sm">{r?.profiles?.name || '—'}</span> 
+    },
     {
       key: 'category', header: 'Category', className: 'text-center', headerClassName: 'font-semibold text-center',
+      sortable: true,
+      sortValue: r => (r?.category || '').toLowerCase(),
       accessor: r => <Badge variant={categoryVariant(r?.category)}>{r?.category || 'N/A'}</Badge>,
     },
     {
       key: 'status', header: 'Status', className: 'text-center', headerClassName: 'font-semibold text-center',
+      sortable: true,
+      sortValue: r => (r?.status || '').toLowerCase(),
       accessor: r => r?.status === 'DRAFT' 
         ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
         : <Badge variant={r?.status === 'APPROVED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
@@ -77,8 +146,10 @@ const DealerTable = ({ rows, onSelect }: { rows: DealerRow[]; onSelect: (r: Deal
     <DataTable
       data={rows || []}
       columns={columns}
+      filters={filters}
       searchPlaceholder="Search dealers..."
-      searchAccessor={r => `${r?.primary_shop_name || ''} ${r?.contact_person || ''} ${r?.contact_mobile || ''} ${r?.primary_address || ''}`}
+      // Make sure search includes SE names so the main bar is highly functional
+      searchAccessor={r => `${r?.primary_shop_name || ''} ${r?.contact_person || ''} ${r?.contact_mobile || ''} ${r?.primary_address || ''} ${r?.profiles?.name || ''}`}
       rowKey={r => r.id}
       onRowClick={onSelect}
       emptyMessage="No dealers found."

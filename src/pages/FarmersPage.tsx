@@ -12,10 +12,23 @@ const FarmersPage = ({ onLogout }: Props) => {
   const [rows, setRows] = useState<FarmerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<FarmerRow | null>(null);
+  const [seList, setSeList] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
     (async () => {
+      // 1. Fetch all SEs from profiles table to populate the filter dropdown
+      const { data: seData } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('role', 'SE');
+      
+      if (seData) {
+        const uniqueNames = Array.from(new Set(seData.map(se => se.name).filter(Boolean)));
+        setSeList(uniqueNames.map(name => ({ value: name as string, label: name as string })));
+      }
+
+      // 2. Fetch farmers data
       const { data: farmersData, error } = await supabase
         .from('farmers')
         .select('*, profiles:se_id(name)')
@@ -23,13 +36,12 @@ const FarmersPage = ({ onLogout }: Props) => {
 
       if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
 
-      // Fetch farmer drafts (🚀 Added 'as any')
+      // 3. Fetch farmer drafts
       const { data: draftsData } = await supabase
         .from('drafts' as any)
         .select('*, profiles:se_id(name)')
         .eq('entity_type', 'farmer');
 
-      // Format drafts (🚀 Added 'as any[]' and '(draft: any)')
       const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => ({
         id: draft.entity_id,
         se_id: draft.se_id,
@@ -60,7 +72,7 @@ const FarmersPage = ({ onLogout }: Props) => {
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : (
-          <FarmerTable rows={rows} onSelect={setSelected} />
+          <FarmerTable rows={rows} onSelect={setSelected} seOptions={seList} />
         )}
       </div>
       <FarmerDetailSheet farmer={selected} open={!!selected} onClose={() => setSelected(null)} />
