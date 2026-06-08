@@ -1,4 +1,4 @@
-import { useState, useMemo, ReactNode } from 'react';
+import { useState, useMemo, ReactNode, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -19,7 +19,6 @@ export interface DataTableFilter<T> {
   key: string;
   label: string;
   options: { value: string; label: string }[];
-  /** Returns true if row matches the selected value (value !== 'all'). */
   predicate: (row: T, value: string) => boolean;
   width?: string;
 }
@@ -34,6 +33,8 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   pageSize?: number;
   emptyMessage?: string;
+  // Callback to return fully filtered/sorted data to the parent
+  onFilteredDataChange?: (filteredData: T[]) => void; 
 }
 
 export function DataTable<T>({
@@ -46,6 +47,7 @@ export function DataTable<T>({
   onRowClick,
   pageSize = 10,
   emptyMessage = 'No records found.',
+  onFilteredDataChange,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string>>(
@@ -83,6 +85,14 @@ export function DataTable<T>({
     return arr;
   }, [filtered, sortKey, sortDir, columns]);
 
+  // Report the filtered and sorted data back to the parent
+  useEffect(() => {
+    if (onFilteredDataChange) {
+      onFilteredDataChange(sorted);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sorted]);
+
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const paged = useMemo(
@@ -107,32 +117,34 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={searchPlaceholder}
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="pl-9"
-          />
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 w-full flex-1">
+          <div className="relative flex-1 min-w-0 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={searchPlaceholder}
+              value={search}
+              onChange={e => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="pl-9"
+            />
+          </div>
+          {filters.map(f => (
+            <Select key={f.key} value={filterValues[f.key]} onValueChange={v => updateFilter(f.key, v)}>
+              <SelectTrigger className={f.width ?? 'w-full sm:w-[150px]'}>
+                <SelectValue placeholder={f.label} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All {f.label}</SelectItem>
+                {f.options.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
         </div>
-        {filters.map(f => (
-          <Select key={f.key} value={filterValues[f.key]} onValueChange={v => updateFilter(f.key, v)}>
-            <SelectTrigger className={f.width ?? 'w-full sm:w-[180px]'}>
-              <SelectValue placeholder={f.label} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All {f.label}</SelectItem>
-              {f.options.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ))}
       </div>
 
       <div className="rounded-lg border border-border overflow-hidden">
