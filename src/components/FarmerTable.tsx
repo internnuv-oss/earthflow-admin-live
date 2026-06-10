@@ -20,6 +20,7 @@ export interface FarmerRow {
   personal_details?: any;
   farm_details?: any;
   history_details?: any;
+  update_history?: any;
   profiles?: { name: string | null } | null;
 }
 
@@ -98,7 +99,8 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
     }
   ], [dateFilteredRows, seOptions]);
 
-  const columns: DataTableColumn<FarmerRow>[] = [
+  // Wrap columns in useMemo to prevent re-creating references on every render
+  const columns: DataTableColumn<FarmerRow>[] = useMemo(() => [
     {
       key: 'full_name', header: 'Full Name', 
       sortable: true, sortValue: r => (r?.full_name || '').toLowerCase(),
@@ -150,7 +152,7 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
         ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
         : <Badge variant={r?.status === 'SUBMITTED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
     },
-  ];
+  ], []); // Empty dependencies because columns layout is static
 
   return (
     <div className="space-y-4">

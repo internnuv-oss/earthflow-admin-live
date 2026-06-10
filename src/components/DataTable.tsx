@@ -90,12 +90,18 @@ export function DataTable<T>({
     return arr;
   }, [filtered, sortKey, sortDir, columns]);
 
+  // Create a stable string representation of the rows currently matching the query
+  const sortedRowIdsString = useMemo(() => {
+    return sorted.map(row => rowKey(row)).join(',');
+  }, [sorted, rowKey]);
+
+  // Safeguard: Only emit updates when the actual row data or item ordering changes
   useEffect(() => {
     if (onFilteredDataChange) {
       onFilteredDataChange(sorted);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sorted]);
+  }, [sortedRowIdsString]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);

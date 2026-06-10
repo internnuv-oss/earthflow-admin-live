@@ -22,6 +22,7 @@ export interface DealerRow {
   bank_details?: any; scoring?: any; commitments?: any; documents?: any; annexures?: any;
   owners_list?: any; additional_locations?: any; distributor_links?: any; demo_farmers_data?: any;
   primary_shop_location?: any;
+  update_history?: any; // <--- ADD THIS LINE
   profiles?: { name: string | null } | null;
 }
 

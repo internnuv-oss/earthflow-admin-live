@@ -41,18 +41,34 @@ const FarmersPage = ({ onLogout }: Props) => {
         .select('*, profiles:se_id(name)')
         .eq('entity_type', 'farmer');
 
-      const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => ({
-        id: draft.entity_id,
-        se_id: draft.se_id,
-        full_name: draft.draft_data?.fullName || 'Incomplete Farmer',
-        mobile: draft.draft_data?.mobile || '—',
-        village: draft.draft_data?.village || '—',
-        district: draft.draft_data?.city || draft.draft_data?.district || '—', 
-        taluka: draft.draft_data?.taluka || '—',
-        status: 'DRAFT',
-        created_at: draft.updated_at,
-        profiles: draft.profiles
-      }));
+        const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => {
+          const d = draft.draft_data || {};
+          return {
+            id: draft.entity_id,
+            se_id: draft.se_id,
+            full_name: d.fullName || 'Incomplete Farmer',
+            mobile: d.mobile || '—',
+            village: d.village || '—',
+            district: d.city || d.district || '—', 
+            taluka: d.taluka || '—',
+            status: 'DRAFT',
+            created_at: draft.updated_at,
+            profiles: draft.profiles,
+            // === NEW MAP: Pass all draft data to the Edit Sheet ===
+            personal_details: {
+              fatherName: d.fatherName, alternateMobile: d.alternateMobile,
+              state: d.state, city: d.city, taluka: d.taluka, pincode: d.pincode
+            },
+            farm_details: {
+              totalLand: d.totalLand, landUnit: d.landUnit, irrigatedLand: d.irrigatedLand, rainFedLand: d.rainFedLand,
+              majorCrops: d.majorCrops, soilType: d.soilType, otherSoilType: d.otherSoilType, waterSource: d.waterSource,
+              otherWaterSource: d.otherWaterSource, irrigationType: d.irrigationType, farmEquipments: d.farmEquipments,
+              otherFarmEquipment: d.otherFarmEquipment, biofertilizer: d.biofertilizer, isIntercropping: d.isIntercropping,
+              sideTrees: d.sideTrees, cattles: d.cattles
+            },
+            history_details: { pastCrops: d.pastCrops }
+          };
+        });
 
       const combined = [...(farmersData || []), ...formattedDrafts].map((row: any) => ({
         ...row,
