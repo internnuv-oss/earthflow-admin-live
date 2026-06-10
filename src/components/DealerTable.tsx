@@ -66,19 +66,19 @@ const DealerTable = ({ rows, onSelect, seOptions = [] }: DealerTableProps) => {
       key: 'status',
       label: 'Status',
       options: getUniqueStatuses(rows),
-      predicate: (row, value) => row.status === value,
+      predicate: (row, values) => values.includes(row.status as string),
     },
     {
       key: 'category',
       label: 'Category',
       options: getUniqueCategories(rows),
-      predicate: (row, value) => row.category === value,
+      predicate: (row, values) => values.includes(row.category as string),
     },
     {
       key: 'se',
       label: 'Onboarded By',
       options: seOptions.length > 0 ? seOptions : [],
-      predicate: (row, value) => row.profiles?.name === value,
+      predicate: (row, values) => values.includes(row.profiles?.name as string),
     }
   ], [rows, seOptions]);
 

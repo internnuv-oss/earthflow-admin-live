@@ -23,7 +23,6 @@ export interface FarmerRow {
   profiles?: { name: string | null } | null;
 }
 
-// --- DATA SCANNING FUNCTIONS ---
 const getUniqueLocations = (rows: FarmerRow[], key: 'district' | 'taluka' | 'village') => {
   const items = new Set<string>();
   rows.forEach(r => {
@@ -74,27 +73,28 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
     {
       key: 'status', label: 'Status',
       options: getUniqueStatuses(dateFilteredRows),
-      predicate: (row, value) => row.status === value,
+      // UPDATED PREDICATE LOGIC FOR MULTI-SELECT
+      predicate: (row, values) => values.includes(row.status as string),
     },
     {
       key: 'district', label: 'District',
       options: getUniqueLocations(dateFilteredRows, 'district'),
-      predicate: (row, value) => row.district === value,
+      predicate: (row, values) => values.includes(row.district as string),
     },
     {
       key: 'taluka', label: 'Taluka',
       options: getUniqueLocations(dateFilteredRows, 'taluka'),
-      predicate: (row, value) => row.taluka === value,
+      predicate: (row, values) => values.includes(row.taluka as string),
     },
     {
       key: 'village', label: 'Village',
       options: getUniqueLocations(dateFilteredRows, 'village'),
-      predicate: (row, value) => row.village === value,
+      predicate: (row, values) => values.includes(row.village as string),
     },
     {
       key: 'se', label: 'Onboarded By',
       options: seOptions.length > 0 ? seOptions : [],
-      predicate: (row, value) => row.profiles?.name === value,
+      predicate: (row, values) => values.includes(row.profiles?.name as string),
     }
   ], [dateFilteredRows, seOptions]);
 
@@ -154,7 +154,6 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
 
   return (
     <div className="space-y-4">
-      {/* Custom Date Range Filter */}
       <div className="flex flex-wrap items-end gap-3 p-4 bg-muted/30 rounded-lg border border-border">
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-1 w-full sm:w-auto">
           <CalendarIcon className="h-4 w-4" /> Filter by Date Onboarded:
@@ -162,30 +161,15 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
         <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 items-center">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="startDate" className="text-xs text-muted-foreground">From</Label>
-            <Input 
-              id="startDate"
-              type="date" 
-              value={startDate} 
-              onChange={e => setStartDate(e.target.value)}
-              className="w-full sm:w-[150px] h-9 text-sm"
-            />
+            <Input id="startDate" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full sm:w-[150px] h-9 text-sm" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="endDate" className="text-xs text-muted-foreground">To</Label>
-            <Input 
-              id="endDate"
-              type="date" 
-              value={endDate} 
-              onChange={e => setEndDate(e.target.value)}
-              className="w-full sm:w-[150px] h-9 text-sm"
-            />
+            <Input id="endDate" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full sm:w-[150px] h-9 text-sm" />
           </div>
         </div>
         {(startDate || endDate) && (
-          <button 
-            onClick={() => { setStartDate(''); setEndDate(''); }}
-            className="text-xs text-primary hover:underline mt-2 sm:mt-0 sm:ml-2 font-medium"
-          >
+          <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-xs text-primary hover:underline mt-2 sm:mt-0 sm:ml-2 font-medium">
             Clear Dates
           </button>
         )}

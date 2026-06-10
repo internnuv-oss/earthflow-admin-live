@@ -1,9 +1,13 @@
 import { useState, useMemo, ReactNode, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
+// Added X icon for the reset button
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, PlusCircle, Check, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface DataTableColumn<T> {
   key: string;
@@ -19,7 +23,7 @@ export interface DataTableFilter<T> {
   key: string;
   label: string;
   options: { value: string; label: string }[];
-  predicate: (row: T, value: string) => boolean;
+  predicate: (row: T, selectedValues: string[]) => boolean; 
   width?: string;
 }
 
@@ -33,7 +37,6 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   pageSize?: number;
   emptyMessage?: string;
-  // Callback to return fully filtered/sorted data to the parent
   onFilteredDataChange?: (filteredData: T[]) => void; 
 }
 
@@ -50,21 +53,23 @@ export function DataTable<T>({
   onFilteredDataChange,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
-  const [filterValues, setFilterValues] = useState<Record<string, string>>(
-    () => Object.fromEntries(filters.map(f => [f.key, 'all'])),
-  );
+  const [filterValues, setFilterValues] = useState<Record<string, string[]>>({});
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
+
+  // Check if any filters or search are currently active
+  const hasActiveFilters = search.trim().length > 0 || Object.values(filterValues).some(arr => arr && arr.length > 0);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (data || []).filter(row => {
       const rowValue = searchAccessor(row) || '';
       if (q && !String(rowValue).toLowerCase().includes(q)) return false;
+      
       for (const f of filters) {
-        const v = filterValues[f.key];
-        if (v && v !== 'all' && !f.predicate(row, v)) return false;
+        const selected = filterValues[f.key] || [];
+        if (selected.length > 0 && !f.predicate(row, selected)) return false;
       }
       return true;
     });
@@ -85,7 +90,6 @@ export function DataTable<T>({
     return arr;
   }, [filtered, sortKey, sortDir, columns]);
 
-  // Report the filtered and sorted data back to the parent
   useEffect(() => {
     if (onFilteredDataChange) {
       onFilteredDataChange(sorted);
@@ -110,40 +114,127 @@ export function DataTable<T>({
     setPage(1);
   };
 
-  const updateFilter = (key: string, value: string) => {
-    setFilterValues(prev => ({ ...prev, [key]: value }));
+  const updateFilter = (key: string, values: string[]) => {
+    setFilterValues(prev => ({ ...prev, [key]: values }));
+    setPage(1);
+  };
+
+  const resetAllFilters = () => {
+    setSearch('');
+    setFilterValues({});
     setPage(1);
   };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full flex-1">
-          <div className="relative flex-1 min-w-0 max-w-sm">
+        <div className="flex flex-wrap gap-3 w-full flex-1 items-center">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={searchPlaceholder}
               value={search}
-              onChange={e => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="pl-9"
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              className="pl-9 h-9"
             />
           </div>
-          {filters.map(f => (
-            <Select key={f.key} value={filterValues[f.key]} onValueChange={v => updateFilter(f.key, v)}>
-              <SelectTrigger className={f.width ?? 'w-full sm:w-[150px]'}>
-                <SelectValue placeholder={f.label} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All {f.label}</SelectItem>
-                {f.options.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
+          
+          {filters.map(f => {
+            const selectedValues = new Set(filterValues[f.key] || []);
+            return (
+              <Popover key={f.key}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 border-dashed text-sm font-medium">
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    {f.label}
+                    {selectedValues.size > 0 && (
+                      <>
+                        <div className="mx-2 h-4 w-[1px] bg-border" />
+                        <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
+                          {selectedValues.size}
+                        </Badge>
+                        <div className="hidden space-x-1 lg:flex">
+                          {selectedValues.size > 2 ? (
+                            <Badge variant="secondary" className="rounded-sm px-1 font-normal">
+                              {selectedValues.size} selected
+                            </Badge>
+                          ) : (
+                            f.options
+                              .filter((opt) => selectedValues.has(opt.value))
+                              .map((opt) => (
+                                <Badge variant="secondary" key={opt.value} className="rounded-sm px-1 font-normal">
+                                  {opt.label}
+                                </Badge>
+                              ))
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[220px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder={`Search ${f.label}...`} />
+                    <CommandList>
+                      <CommandEmpty>No results found.</CommandEmpty>
+                      <CommandGroup>
+                        {f.options.map((opt) => {
+                          const isSelected = selectedValues.has(opt.value);
+                          return (
+                            <CommandItem
+                              key={opt.value}
+                              onSelect={() => {
+                                const next = new Set(selectedValues);
+                                if (isSelected) { next.delete(opt.value); } 
+                                else { next.add(opt.value); }
+                                updateFilter(f.key, Array.from(next));
+                              }}
+                            >
+                              <div
+                                className={cn(
+                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                  isSelected ? "bg-primary text-primary-foreground" : "opacity-50 [&_svg]:invisible"
+                                )}
+                              >
+                                <Check className="h-4 w-4" />
+                              </div>
+                              <span className="truncate">{opt.label}</span>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                      {selectedValues.size > 0 && (
+                        <>
+                          <CommandSeparator />
+                          <CommandGroup>
+                            <CommandItem
+                              onSelect={() => updateFilter(f.key, [])}
+                              className="justify-center text-center font-medium"
+                            >
+                              Clear filters
+                            </CommandItem>
+                          </CommandGroup>
+                        </>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            );
+          })}
+
+          {/* NEW RESET BUTTON */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetAllFilters}
+              className="h-9 px-2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="mr-2 h-4 w-4" />
+              Reset Filters
+            </Button>
+          )}
         </div>
       </div>
 
@@ -207,23 +298,13 @@ export function DataTable<T>({
           {(currentPage - 1) * pageSize + paged.length} of {sorted.length}
         </p>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
             <ChevronLeft className="h-4 w-4" /> Prev
           </Button>
           <span className="text-xs text-muted-foreground px-2">
             Page {currentPage} of {totalPages}
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
             Next <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

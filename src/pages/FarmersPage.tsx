@@ -69,11 +69,14 @@ const FarmersPage = ({ onLogout }: Props) => {
   }, [toast]);
 
   const handleExportExcel = () => {
-    const headers = ['Full Name', 'Mobile', 'Village', 'Taluka', 'District', 'Onboarded By', 'Date Onboarded', 'Status'];
+    // 1. Added 'Sr. No.' to the headers
+    const headers = ['Sr. No.', 'Full Name', 'Mobile', 'Village', 'Taluka', 'District', 'Onboarded By', 'Date Onboarded', 'Status'];
     const csvRows = [headers.join(',')];
     
-    filteredData.forEach(row => {
+    // 2. Added index to the forEach loop
+    filteredData.forEach((row, index) => {
       csvRows.push([
+        `"${index + 1}"`, // Sequential number starting from 1
         `"${row.full_name || ''}"`,
         `"${row.mobile || ''}"`,
         `"${row.village || ''}"`,
@@ -98,7 +101,9 @@ const FarmersPage = ({ onLogout }: Props) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const rowsHtml = filteredData.map(row => `<tr>
+    // 1. Added index parameter and a <td> for the Sr. No.
+    const rowsHtml = filteredData.map((row, index) => `<tr>
+        <td>${index + 1}</td>
         <td>${row.full_name || ''}</td>
         <td>${row.mobile || ''}</td>
         <td>${row.village || ''}</td>
@@ -127,7 +132,7 @@ const FarmersPage = ({ onLogout }: Props) => {
           <table>
             <thead>
               <tr>
-                <th>Full Name</th><th>Mobile</th><th>Village</th><th>Taluka</th>
+                <th>Sr. No.</th><th>Full Name</th><th>Mobile</th><th>Village</th><th>Taluka</th>
                 <th>District</th><th>Onboarded By</th><th>Date Onboarded</th><th>Status</th>
               </tr>
             </thead>
@@ -145,7 +150,6 @@ const FarmersPage = ({ onLogout }: Props) => {
   return (
     <AppLayout onLogout={onLogout}>
       <div>
-        {/* Header Layout With Buttons on Right */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
           <div>
             <h2 className="text-lg font-semibold mb-1">Farmer Directory</h2>
@@ -154,7 +158,6 @@ const FarmersPage = ({ onLogout }: Props) => {
             </p>
           </div>
           
-          {/* Export Buttons */}
           {!loading && (
             <div className="flex items-center gap-2 shrink-0">
               <Button 

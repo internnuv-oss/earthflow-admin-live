@@ -70,19 +70,19 @@ const DistributorTable = ({ rows, onSelect, seOptions = [] }: DistributorTablePr
       key: 'status',
       label: 'Status',
       options: getUniqueStatuses(rows),
-      predicate: (row, value) => row.status === value,
+      predicate: (row, values) => values.includes(row.status as string),
     },
     {
       key: 'band',
       label: 'Band',
       options: getUniqueBands(rows),
-      predicate: (row, value) => row.band === value,
+      predicate: (row, values) => values.includes(row.band as string),
     },
     {
       key: 'se',
       label: 'Onboarded By',
       options: seOptions.length > 0 ? seOptions : [],
-      predicate: (row, value) => row.profiles?.name === value,
+      predicate: (row, values) => values.includes(row.profiles?.name as string),
     }
   ], [rows, seOptions]);
 
