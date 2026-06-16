@@ -23,6 +23,7 @@ const navItems = [
   { to: '/distributors', label: 'Distributors', icon: Truck },
   { to: '/dealers', label: 'Dealers', icon: Users },
   { to: '/farmers', label: 'Farmers', icon: Wheat },
+  { to: '/fpos', label: 'FPOs', icon: Sprout },
 ];
 
 const settingsChildren = [

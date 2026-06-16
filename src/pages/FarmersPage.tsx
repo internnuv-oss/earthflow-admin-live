@@ -4,8 +4,10 @@ import { useToast } from '@/hooks/use-toast';
 import AppLayout from '@/components/AppLayout';
 import FarmerTable, { FarmerRow } from '@/components/FarmerTable';
 import FarmerDetailSheet from '@/components/FarmerDetailSheet';
-import { Loader2, FileSpreadsheet, FileText } from 'lucide-react';
+import FarmerMapView from '@/components/FarmerMapView'; // <-- IMPORT MAP VIEW
+import { Loader2, FileSpreadsheet, FileText, Map, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'; // <-- IMPORT TABS
 
 interface Props { onLogout: () => void; }
 
@@ -15,6 +17,7 @@ const FarmersPage = ({ onLogout }: Props) => {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<FarmerRow | null>(null);
   const [seList, setSeList] = useState<{ value: string; label: string }[]>([]);
+  const [viewMode, setViewMode] = useState<'table' | 'map'>('table'); // <-- STATE FOR MAP TOGGLE
   const { toast } = useToast();
 
   useEffect(() => {
@@ -54,7 +57,6 @@ const FarmersPage = ({ onLogout }: Props) => {
             status: 'DRAFT',
             created_at: draft.updated_at,
             profiles: draft.profiles,
-            // === NEW MAP: Pass all draft data to the Edit Sheet ===
             personal_details: {
               fatherName: d.fatherName, alternateMobile: d.alternateMobile,
               state: d.state, city: d.city, taluka: d.taluka, pincode: d.pincode
@@ -85,14 +87,12 @@ const FarmersPage = ({ onLogout }: Props) => {
   }, [toast]);
 
   const handleExportExcel = () => {
-    // 1. Added 'Sr. No.' to the headers
     const headers = ['Sr. No.', 'Full Name', 'Mobile', 'Village', 'Taluka', 'District', 'Onboarded By', 'Date Onboarded', 'Status'];
     const csvRows = [headers.join(',')];
     
-    // 2. Added index to the forEach loop
     filteredData.forEach((row, index) => {
       csvRows.push([
-        `"${index + 1}"`, // Sequential number starting from 1
+        `"${index + 1}"`,
         `"${row.full_name || ''}"`,
         `"${row.mobile || ''}"`,
         `"${row.village || ''}"`,
@@ -117,7 +117,6 @@ const FarmersPage = ({ onLogout }: Props) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    // 1. Added index parameter and a <td> for the Sr. No.
     const rowsHtml = filteredData.map((row, index) => `<tr>
         <td>${index + 1}</td>
         <td>${row.full_name || ''}</td>
@@ -166,7 +165,7 @@ const FarmersPage = ({ onLogout }: Props) => {
   return (
     <AppLayout onLogout={onLogout}>
       <div>
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
           <div>
             <h2 className="text-lg font-semibold mb-1">Farmer Directory</h2>
             <p className="text-sm text-muted-foreground">
@@ -175,14 +174,25 @@ const FarmersPage = ({ onLogout }: Props) => {
           </div>
           
           {!loading && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              
+              {/* === THE NEW TOGGLE SWITCH === */}
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'map')} className="w-[180px]">
+                <TabsList className="grid w-full grid-cols-2 h-9">
+                  <TabsTrigger value="table" className="text-xs"><List className="w-3.5 h-3.5 mr-1.5"/> Table</TabsTrigger>
+                  <TabsTrigger value="map" className="text-xs"><Map className="w-3.5 h-3.5 mr-1.5"/> Map</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+
               <Button 
                 variant="outline" 
                 size="sm" 
                 className="gap-2 text-green-700 hover:text-green-800"
                 onClick={handleExportExcel}
               >
-                <FileSpreadsheet className="h-4 w-4" /> Excel (CSV)
+                <FileSpreadsheet className="h-4 w-4" /> CSV
               </Button>
               <Button 
                 variant="outline" 
@@ -199,12 +209,20 @@ const FarmersPage = ({ onLogout }: Props) => {
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : (
-          <FarmerTable 
-            rows={rows} 
-            onSelect={setSelected} 
-            seOptions={seList} 
-            onFilteredDataChange={setFilteredData} 
-          />
+          viewMode === 'table' ? (
+            <FarmerTable 
+              rows={rows} 
+              onSelect={setSelected} 
+              seOptions={seList} 
+              onFilteredDataChange={setFilteredData} 
+            />
+          ) : (
+            // Pass the currently filtered data to the map!
+            <FarmerMapView 
+              data={filteredData} 
+              onViewDetails={setSelected} 
+            />
+          )
         )}
       </div>
       <FarmerDetailSheet farmer={selected} open={!!selected} onClose={() => setSelected(null)} />

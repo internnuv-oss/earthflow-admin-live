@@ -7,6 +7,7 @@ import Dashboard from './Dashboard';
 import DealersPage from './DealersPage';
 import FarmersPage from './FarmersPage';
 import DistributorsPage from './DistributorsPage';
+import FposPage from './FposPage';
 import SEsPage from './SEsPage';
 import SettingsPage from './SettingsPage';
 import SettingsTemplatePage from './SettingsTemplatePage';
@@ -40,6 +41,7 @@ const Index = () => {
       <Route path="/settings/farmer" element={guard(<SettingsTemplatePage type="farmer" onLogout={logout} />)} />
       <Route path="/settings/distributor" element={guard(<SettingsTemplatePage type="distributor" onLogout={logout} />)} />
       <Route path="/settings/legacy" element={guard(<SettingsPage onLogout={logout} />)} />
+      <Route path="/fpos" element={guard(<FposPage onLogout={logout} />)} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
