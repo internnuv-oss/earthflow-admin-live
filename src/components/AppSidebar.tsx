@@ -16,14 +16,16 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions'; // 🚀 IMPORT PERMISSIONS HOOK
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/sales-executives', label: 'Sales Executives', icon: UserCog },
-  { to: '/distributors', label: 'Distributors', icon: Truck },
-  { to: '/dealers', label: 'Dealers', icon: Users },
-  { to: '/farmers', label: 'Farmers', icon: Wheat },
-  { to: '/fpos', label: 'FPOs', icon: Sprout },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true, module: 'dashboard' },
+  { to: '/sales-executives', label: 'Sales Executives', icon: UserCog, module: 'sales_executives' },
+  { to: '/distributors', label: 'Distributors', icon: Truck, module: 'distributors' },
+  { to: '/dealers', label: 'Dealers', icon: Users, module: 'dealers' },
+  { to: '/farmers', label: 'Farmers', icon: Wheat, module: 'farmers' },
+  { to: '/fpos', label: 'FPOs', icon: Sprout, module: 'fpos' },
 ];
 
 const settingsChildren = [
@@ -40,6 +42,22 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   const location = useLocation();
   const settingsActive = location.pathname.startsWith('/settings');
   const [settingsOpen, setSettingsOpen] = useState(settingsActive);
+  
+  // 1. FETCH CURRENT AUTH USER
+  const { session, role } = useAuth(); 
+
+  // 2. FETCH RELEVANT DYNAMIC PERMISSIONS FOR THIS USER
+  const { getModulePerm } = usePermissions(session?.user?.id);
+
+  // 3. FILTER NAV ITEMS DYNAMICALLY BASED ON PERMISSIONS
+  const filteredNavItems = navItems.filter((item) => {
+    // Dashboard is always visible to everyone
+    if (item.label === 'Dashboard') return true;
+
+    // For all other pages, read permissions dynamically from user_permissions table
+    const perm = getModulePerm(item.module || '');
+    return perm.can_view;
+  });
 
   const renderLink = (item: { to: string; label: string; icon: typeof Users; end?: boolean }) => {
     const active = item.end
@@ -72,55 +90,60 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
         </div>
         <div className="min-w-0">
           <h1 className="text-sm font-bold leading-tight truncate">Field Commander Admin</h1>
-          <p className="text-xs text-muted-foreground truncate">Territory Head</p>
+          <p className="text-xs text-muted-foreground truncate uppercase">
+            {role === 'CO' ? 'Coordinator' : 'Territory Head'}
+          </p>
         </div>
       </div>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {(navItems || []).map(renderLink)}
+        {filteredNavItems.map(renderLink)}
       </nav>
 
-      <div className="p-3 space-y-1 border-t border-border">
-        <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <CollapsibleTrigger
-            className={cn(
-              'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-              settingsActive
-                ? 'bg-accent text-primary'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-            )}
-          >
-            <Settings className="h-4 w-4 shrink-0" />
-            <span className="flex-1 text-left">Settings</span>
-            <ChevronDown
+      {/* Hide Settings if role is Coordinator */}
+      {role !== 'CO' && (
+        <div className="p-3 space-y-1 border-t border-border">
+          <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <CollapsibleTrigger
               className={cn(
-                'h-4 w-4 shrink-0 transition-transform',
-                settingsOpen && 'rotate-180',
+                'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                settingsActive
+                  ? 'bg-accent text-primary'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               )}
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-1 ml-4 pl-3 border-l border-border space-y-1">
-            {(settingsChildren || []).map(child => {
-              const active = location.pathname === child.to;
-              return (
-                <NavLink
-                  key={child.to}
-                  to={child.to}
-                  onClick={onNavigate}
-                  className={cn(
-                    'block px-3 py-1.5 rounded-md text-sm transition-colors',
-                    active
-                      ? 'bg-accent text-primary font-medium'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                  )}
-                >
-                  {child.label}
-                </NavLink>
-              );
-            })}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              <span className="flex-1 text-left">Settings</span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 shrink-0 transition-transform',
+                  settingsOpen && 'rotate-180',
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1 ml-4 pl-3 border-l border-border space-y-1">
+              {(settingsChildren || []).map(child => {
+                const active = location.pathname === child.to;
+                return (
+                  <NavLink
+                    key={child.to}
+                    to={child.to}
+                    onClick={onNavigate}
+                    className={cn(
+                      'block px-3 py-1.5 rounded-md text-sm transition-colors',
+                      active
+                        ? 'bg-accent text-primary font-medium'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                    )}
+                  >
+                    {child.label}
+                  </NavLink>
+                );
+              })}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
     </aside>
   );
 };

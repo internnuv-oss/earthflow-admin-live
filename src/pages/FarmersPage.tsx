@@ -1,24 +1,35 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import AppLayout from '@/components/AppLayout';
 import FarmerTable, { FarmerRow } from '@/components/FarmerTable';
 import FarmerDetailSheet from '@/components/FarmerDetailSheet';
-import FarmerMapView from '@/components/FarmerMapView'; // <-- IMPORT MAP VIEW
-import { Loader2, FileSpreadsheet, FileText, Map, List } from 'lucide-react';
+import FarmerMapView from '@/components/FarmerMapView'; 
+import { Loader2, FileSpreadsheet, FileText, Map, List, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'; // <-- IMPORT TABS
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'; 
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface Props { onLogout: () => void; }
 
 const FarmersPage = ({ onLogout }: Props) => {
+  // ==========================================
+  // 1. ALL HOOKS AT THE VERY TOP
+  // ==========================================
   const [rows, setRows] = useState<FarmerRow[]>([]);
   const [filteredData, setFilteredData] = useState<FarmerRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); 
   const [selected, setSelected] = useState<FarmerRow | null>(null);
   const [seList, setSeList] = useState<{ value: string; label: string }[]>([]);
-  const [viewMode, setViewMode] = useState<'table' | 'map'>('table'); // <-- STATE FOR MAP TOGGLE
+  const [viewMode, setViewMode] = useState<'table' | 'map'>('table'); 
   const { toast } = useToast();
+  
+  const { session, loading: authLoading } = useAuth();
+  const userId = session?.user?.id;
+  
+  const { getModulePerm, loading: permLoading } = usePermissions(userId || '');
+  const farmerAccess = getModulePerm('farmers');
 
   useEffect(() => {
     (async () => {
@@ -44,33 +55,33 @@ const FarmersPage = ({ onLogout }: Props) => {
         .select('*, profiles:se_id(name)')
         .eq('entity_type', 'farmer');
 
-        const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => {
-          const d = draft.draft_data || {};
-          return {
-            id: draft.entity_id,
-            se_id: draft.se_id,
-            full_name: d.fullName || 'Incomplete Farmer',
-            mobile: d.mobile || '—',
-            village: d.village || '—',
-            district: d.city || d.district || '—', 
-            taluka: d.taluka || '—',
-            status: 'DRAFT',
-            created_at: draft.updated_at,
-            profiles: draft.profiles,
-            personal_details: {
-              fatherName: d.fatherName, alternateMobile: d.alternateMobile,
-              state: d.state, city: d.city, taluka: d.taluka, pincode: d.pincode
-            },
-            farm_details: {
-              totalLand: d.totalLand, landUnit: d.landUnit, irrigatedLand: d.irrigatedLand, rainFedLand: d.rainFedLand,
-              majorCrops: d.majorCrops, soilType: d.soilType, otherSoilType: d.otherSoilType, waterSource: d.waterSource,
-              otherWaterSource: d.otherWaterSource, irrigationType: d.irrigationType, farmEquipments: d.farmEquipments,
-              otherFarmEquipment: d.otherFarmEquipment, biofertilizer: d.biofertilizer, isIntercropping: d.isIntercropping,
-              sideTrees: d.sideTrees, cattles: d.cattles
-            },
-            history_details: { pastCrops: d.pastCrops }
-          };
-        });
+      const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => {
+        const d = draft.draft_data || {};
+        return {
+          id: draft.entity_id,
+          se_id: draft.se_id,
+          full_name: d.fullName || 'Incomplete Farmer',
+          mobile: d.mobile || '—',
+          village: d.village || '—',
+          district: d.city || d.district || '—', 
+          taluka: d.taluka || '—',
+          status: 'DRAFT',
+          created_at: draft.updated_at,
+          profiles: draft.profiles,
+          personal_details: {
+            fatherName: d.fatherName, alternateMobile: d.alternateMobile,
+            state: d.state, city: d.city, taluka: d.taluka, pincode: d.pincode
+          },
+          farm_details: {
+            totalLand: d.totalLand, landUnit: d.landUnit, irrigatedLand: d.irrigatedLand, rainFedLand: d.rainFedLand,
+            majorCrops: d.majorCrops, soilType: d.soilType, otherSoilType: d.otherSoilType, waterSource: d.waterSource,
+            otherWaterSource: d.otherWaterSource, irrigationType: d.irrigationType, farmEquipments: d.farmEquipments,
+            otherFarmEquipment: d.otherFarmEquipment, biofertilizer: d.biofertilizer, isIntercropping: d.isIntercropping,
+            sideTrees: d.sideTrees, cattles: d.cattles
+          },
+          history_details: { pastCrops: d.pastCrops }
+        };
+      });
 
       const combined = [...(farmersData || []), ...formattedDrafts].map((row: any) => ({
         ...row,
@@ -81,11 +92,37 @@ const FarmersPage = ({ onLogout }: Props) => {
       );
 
       setRows(combined as any);
-      setFilteredData(combined as any); // Initialize with all rows
+      setFilteredData(combined as any); 
       setLoading(false);
     })();
   }, [toast]);
 
+  // ==========================================
+  // 2. SAFE EARLY RETURNS
+  // ==========================================
+  if (authLoading || permLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!farmerAccess.can_view) {
+    return (
+      <AppLayout onLogout={onLogout}>
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+          <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">You do not have permission to view the farmer directory.</p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ==========================================
+  // 3. EXPORT FUNCTIONS & MAIN RENDER
+  // ==========================================
   const handleExportExcel = () => {
     const headers = ['Sr. No.', 'Full Name', 'Mobile', 'Village', 'Taluka', 'District', 'Onboarded By', 'Date Onboarded', 'Status'];
     const csvRows = [headers.join(',')];
@@ -175,8 +212,6 @@ const FarmersPage = ({ onLogout }: Props) => {
           
           {!loading && (
             <div className="flex flex-wrap items-center gap-3 shrink-0">
-              
-              {/* === THE NEW TOGGLE SWITCH === */}
               <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'map')} className="w-[180px]">
                 <TabsList className="grid w-full grid-cols-2 h-9">
                   <TabsTrigger value="table" className="text-xs"><List className="w-3.5 h-3.5 mr-1.5"/> Table</TabsTrigger>
@@ -215,9 +250,9 @@ const FarmersPage = ({ onLogout }: Props) => {
               onSelect={setSelected} 
               seOptions={seList} 
               onFilteredDataChange={setFilteredData} 
+              canEdit={farmerAccess.can_edit} 
             />
           ) : (
-            // Pass the currently filtered data to the map!
             <FarmerMapView 
               data={filteredData} 
               onViewDetails={setSelected} 
@@ -225,7 +260,12 @@ const FarmersPage = ({ onLogout }: Props) => {
           )
         )}
       </div>
-      <FarmerDetailSheet farmer={selected} open={!!selected} onClose={() => setSelected(null)} />
+      <FarmerDetailSheet 
+        farmer={selected} 
+        open={!!selected} 
+        onClose={() => setSelected(null)} 
+        canEdit={farmerAccess.can_edit} 
+      />
     </AppLayout>
   );
 };

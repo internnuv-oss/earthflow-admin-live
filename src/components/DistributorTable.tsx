@@ -60,6 +60,7 @@ interface DistributorTableProps {
   rows: DistributorRow[];
   onSelect: (r: DistributorRow) => void;
   seOptions?: { value: string; label: string }[];
+  onFilteredDataChange?: (data: DistributorRow[]) => void;
 }
 
 const DistributorTable = ({ rows, onSelect, seOptions = [] }: DistributorTableProps) => {

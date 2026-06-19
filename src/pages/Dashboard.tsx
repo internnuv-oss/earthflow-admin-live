@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import KpiCard from '@/components/KpiCard';
 import AppLayout from '@/components/AppLayout';
+import AdminUserManagement from '@/components/AdminUserManagement'; // 🚀 IMPORT THE USER MANAGEMENT COMPONENT
 import { Users, Clock, Wheat, Truck, UserCog, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth'; 
 
 interface DashboardProps { onLogout: () => void; }
 
@@ -14,6 +16,8 @@ interface Counts {
 }
 
 const Dashboard = ({ onLogout }: DashboardProps) => {
+  const { role } = useAuth(); 
+  
   const [c, setC] = useState<Counts>({
     ses: 0, sesComplete: 0, distributors: 0, distributorsPending: 0,
     dealers: 0, dealersPending: 0, farmers: 0, farmersPending: 0,
@@ -45,20 +49,41 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
 
   return (
     <AppLayout onLogout={onLogout}>
-      <div>
-        <h2 className="text-lg font-semibold mb-1">Overview</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Live command center across sales executives, distributors, dealers, and farmers.
-        </p>
-      </div>
+      <div className="space-y-8"> {/* Added space-y-8 wrapper to cleanly space dashboard sections */}
+        <div>
+          <h2 className="text-lg font-semibold mb-1">Overview</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Live command center across sales executives, distributors, dealers, and farmers.
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KpiCard title="Sales Executives" value={c.ses} icon={UserCog} description="Active SEs in territory" to="/sales-executives" />
-        <KpiCard title="SE Profiles Complete" value={c.sesComplete} icon={CheckCircle2} description="Finished mobile onboarding" />
-        <KpiCard title="Distributors" value={c.distributors} icon={Truck} description="View directory" to="/distributors" />
-        <KpiCard title="Dealers" value={c.dealers} icon={Users} description="View directory" to="/dealers" />
-        <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
-        <KpiCard title="Pending Approvals" value={totalPending} icon={Clock} description="Drafts across all directories" accent="muted" />
+        {/* KPI Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {role === 'CO' ? (
+            <>
+              <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
+              <KpiCard title="Pending Farmers" value={c.farmersPending} icon={Clock} description="Draft farmers" accent="muted" />
+            </>
+          ) : (
+            <>
+              <KpiCard title="Sales Executives" value={c.ses} icon={UserCog} description="Active SEs in territory" to="/sales-executives" />
+              <KpiCard title="SE Profiles Complete" value={c.sesComplete} icon={CheckCircle2} description="Finished mobile onboarding" />
+              <KpiCard title="Distributors" value={c.distributors} icon={Truck} description="View directory" to="/distributors" />
+              <KpiCard title="Dealers" value={c.dealers} icon={Users} description="View directory" to="/dealers" />
+              <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
+              <KpiCard title="Pending Approvals" value={totalPending} icon={Clock} description="Drafts across all directories" accent="muted" />
+            </>
+          )}
+        </div>
+
+        {/* 🚀 ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS (TH) */}
+        {role === 'TH' && (
+          <>
+            <div className="border-t pt-8">
+              <AdminUserManagement />
+            </div>
+          </>
+        )}
       </div>
     </AppLayout>
   );

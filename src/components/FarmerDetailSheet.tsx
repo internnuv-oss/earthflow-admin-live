@@ -17,6 +17,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { FarmerRow } from './FarmerTable';
+import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // --- MOBILE APP SELECTION CONSTANTS ---
 const INDIAN_STATES = [
@@ -125,6 +127,8 @@ interface Props {
   open: boolean; 
   onClose: () => void;
   onSaved?: () => void;
+  canEdit: boolean;
+  
 }
 
 const safeArray = (val: any): string[] => {
@@ -133,9 +137,16 @@ const safeArray = (val: any): string[] => {
   return [];
 };
 
-const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved }: Props) => {
-  const { toast } = useToast();
+const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props) => {
+  const { session } = useAuth();
+  const userId = session?.user?.id;
+  const { getModulePerm } = usePermissions(userId || '');
   
+  // This evaluates to true or false
+  const hasEditAccess = getModulePerm('farmers').can_edit;
+  const { toast } = useToast();
+  const { role } = useAuth();
+ 
   // --- EDIT STATE ---
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -357,17 +368,21 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved }: Props) => {
       <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-3xl p-0 flex flex-col">
         <SheetHeader className="px-6 py-5 border-b border-border space-y-4">
           <div className="flex items-start justify-between gap-4">
+            
             <div className="min-w-0 flex-1">
-              {isEditing ? (
+              {/* ALWAYS IN DOM, BUT SCREEN-READER ONLY IF EDITING */}
+              <SheetTitle className={cn("text-xl truncate", isEditing && "sr-only")}>
+                {f?.full_name || 'Farmer'}
+              </SheetTitle>
+              <SheetDescription className="sr-only">
+                Farmer configuration panel.
+              </SheetDescription> 
+
+              {isEditing && (
                 <div className="space-y-1 mb-2">
                   <Label className="text-xs text-muted-foreground">Full Name *</Label>
                   <Input value={fullName} onChange={e => setFullName(e.target.value)} className="text-lg font-bold h-9 w-full max-w-sm" />
                 </div>
-              ) : (
-                <>
-                  <SheetTitle className="text-xl truncate">{f?.full_name || 'Farmer'}</SheetTitle>
-                  <SheetDescription className="sr-only">Farmer configuration panel.</SheetDescription> 
-                </>
               )}
               
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -386,14 +401,24 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved }: Props) => {
             <div className="flex flex-col items-end gap-2 shrink-0">
               <Badge>{f?.status || 'DRAFT'}</Badge>
 
-              {!isEditing && (
-                <Button size="sm" variant="outline" className="h-8" onClick={() => setIsEditing(true)}>
-                  <Edit className="h-3.5 w-3.5 mr-1.5" /> Edit Profile
-                </Button>
-              )}
+              <div className="flex gap-2 justify-end mt-4">
+                {isEditing ? (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} disabled={saving} className="gap-1">
+                      <X className="h-3.5 w-3.5" /> Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
+                    </Button>
+                  </>
+                ) : hasEditAccess && (
+                  <Button size="sm" onClick={() => setIsEditing(true)} className="gap-1">
+                    <Edit className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                )}
             </div>
           </div>
-
+</div>
           {!isEditing && f?.pdf_url && (
             <Button asChild size="sm" variant="secondary" className="self-start gap-2">
               <a href={f.pdf_url} target="_blank" rel="noreferrer"><FileText className="h-4 w-4" /> View PDF Dossier</a>
@@ -658,17 +683,18 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved }: Props) => {
         </Tabs>
 
         {isEditing && (
-          <SheetFooter className="px-6 py-4 border-t border-border bg-muted/20 mt-auto">
-            <div className="flex w-full justify-end gap-3">
-              <Button variant="ghost" onClick={() => setIsEditing(false)} disabled={saving}>
-                <X className="h-4 w-4 mr-2" /> Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                Save Changes
-              </Button>
-            </div>
-          </SheetFooter>
+          <SheetFooter className="mt-6">
+          <Button variant="outline" onClick={onClose}>
+            {hasEditAccess ? "Cancel" : "Close"}
+          </Button>
+          
+          {hasEditAccess && (
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save Changes
+            </Button>
+          )}
+        </SheetFooter>
         )}
       </SheetContent>
     </Sheet>

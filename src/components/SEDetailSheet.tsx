@@ -8,20 +8,23 @@ import type { SERow } from './SETable';
 import { supabase } from '@/integrations/supabase/client';
 import { Store, Tractor, Building2 } from 'lucide-react';
 
-interface Props { se: SERow | null; open: boolean; onClose: () => void; }
+interface Props { 
+  se: SERow | null; 
+  open: boolean; 
+  onClose: () => void; 
+  canEdit: boolean; // 🚀 Added dynamic edit permission prop
+}
 
-const SEDetailSheet = ({ se, open, onClose }: Props) => {
-  // 🚀 Added state to hold the live counts
+const SEDetailSheet = ({ se, open, onClose, canEdit }: Props) => {
+  // Added state to hold the live counts
   const [counts, setCounts] = useState({ dealers: 0, farmers: 0, distributors: 0 });
 
-  // 🚀 Fetch the counts from Supabase every time the sheet opens
-  // 🚀 Fetch the counts from Supabase every time the sheet opens
+  // Fetch the counts from Supabase every time the sheet opens
   useEffect(() => {
     if (!se?.id || !open) return;
     
     const fetchCounts = async () => {
       const [dealers, farmers, distributors] = await Promise.all([
-        // Changed 'created_by' to 'se_id' to match your database schema
         supabase.from('dealers').select('id', { count: 'exact', head: true }).eq('se_id', se.id),
         supabase.from('farmers').select('id', { count: 'exact', head: true }).eq('se_id', se.id),
         supabase.from('distributors').select('id', { count: 'exact', head: true }).eq('se_id', se.id),
@@ -57,19 +60,28 @@ const SEDetailSheet = ({ se, open, onClose }: Props) => {
               <span>✉️ {se?.email || 'N/A'}</span>
             </SheetDescription>
 
-            {/* 🚀 NEW: The KPI Network Bar */}
+            {/* The KPI Network Bar */}
             <div className="flex gap-3 pt-3">
               <div className="flex flex-1 items-center justify-center gap-2 bg-blue-100/50 border border-blue-200 text-blue-800 px-3 py-2.5 rounded-lg shadow-sm">
                 <Store className="h-5 w-5" />
-                <div className="flex flex-col"><span className="text-xs opacity-80 leading-none">Dealers</span><span className="font-bold leading-none">{counts.dealers}</span></div>
+                <div className="flex flex-col">
+                  <span className="text-xs opacity-80 leading-none">Dealers</span>
+                  <span className="font-bold leading-none">{counts.dealers}</span>
+                </div>
               </div>
               <div className="flex flex-1 items-center justify-center gap-2 bg-green-100/50 border border-green-200 text-green-800 px-3 py-2.5 rounded-lg shadow-sm">
                 <Tractor className="h-5 w-5" />
-                <div className="flex flex-col"><span className="text-xs opacity-80 leading-none">Farmers</span><span className="font-bold leading-none">{counts.farmers}</span></div>
+                <div className="flex flex-col">
+                  <span className="text-xs opacity-80 leading-none">Farmers</span>
+                  <span className="font-bold leading-none">{counts.farmers}</span>
+                </div>
               </div>
               <div className="flex flex-1 items-center justify-center gap-2 bg-orange-100/50 border border-orange-200 text-orange-800 px-3 py-2.5 rounded-lg shadow-sm">
                 <Building2 className="h-5 w-5" />
-                <div className="flex flex-col"><span className="text-xs opacity-80 leading-none">Distributors</span><span className="font-bold leading-none">{counts.distributors}</span></div>
+                <div className="flex flex-col">
+                  <span className="text-xs opacity-80 leading-none">Distributors</span>
+                  <span className="font-bold leading-none">{counts.distributors}</span>
+                </div>
               </div>
             </div>
           </SheetHeader>
@@ -104,6 +116,13 @@ const SEDetailSheet = ({ se, open, onClose }: Props) => {
               </div>
             </ScrollArea>
           </Tabs>
+
+          {/* Safe Permission Label Info Footer */}
+          {!canEdit && (
+            <div className="mx-6 mb-4 p-2 bg-muted rounded border text-xs text-muted-foreground text-center italic">
+              Viewing Mode: You don't have authorization to edit this agent.
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>

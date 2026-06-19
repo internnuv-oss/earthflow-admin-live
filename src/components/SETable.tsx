@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { DataTable, DataTableColumn } from './DataTable';
-import { Mail, Phone, User } from 'lucide-react';
+import { Button } from '@/components/ui/button'; // 🚀 Added Button import
+import { Mail, Phone, User, Edit2, Eye } from 'lucide-react'; // 🚀 Added Edit2 & Eye icons
 
 export interface SERow {
   id: string;
@@ -22,10 +24,12 @@ export interface SERow {
 interface Props {
   rows: SERow[];
   onSelect: (row: SERow) => void;
+  canEdit: boolean; // 🚀 Added dynamic edit permission prop
 }
 
-const SETable = ({ rows, onSelect }: Props) => {
-  const columns: DataTableColumn<SERow>[] = [
+const SETable = ({ rows, onSelect, canEdit }: Props) => {
+  // Wrap columns in useMemo so it correctly re-renders when the canEdit permission status changes
+  const columns: DataTableColumn<SERow>[] = useMemo(() => [
     {
       key: 'name', header: 'Name', sortable: true, sortValue: r => (r?.name || '').toLowerCase(),
       accessor: r => (
@@ -62,7 +66,19 @@ const SETable = ({ rows, onSelect }: Props) => {
       sortValue: r => r?.created_at ? new Date(r.created_at).getTime() : 0,
       accessor: r => <span className="text-xs text-muted-foreground">{r?.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</span>,
     },
-  ];
+    {
+      key: 'actions', header: 'Actions', className: 'text-right', headerClassName: 'font-semibold text-right pr-4',
+      accessor: r => canEdit ? (
+        <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={(e) => { e.stopPropagation(); onSelect(r); }}>
+          <Edit2 className="h-3.5 w-3.5" /> Edit
+        </Button>
+      ) : (
+        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={(e) => { e.stopPropagation(); onSelect(r); }}>
+          <Eye className="h-3.5 w-3.5" /> View
+        </Button>
+      )
+    }
+  ], [canEdit, onSelect]);
 
   return (
     <DataTable

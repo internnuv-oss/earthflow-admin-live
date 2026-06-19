@@ -21,9 +21,10 @@ export type Database = {
           bank_details: Json | null
           category: string | null
           commitments: Json | null
-          contact_mobile: string | null
-          contact_person: string | null
-          created_at: string
+          contact_mobile: string
+          contact_person: string
+          created_at: string | null
+          dealer_signature: string | null
           demo_farmers_data: Json | null
           distributor_links: Json | null
           documents: Json | null
@@ -31,16 +32,22 @@ export type Database = {
           firm_type: string | null
           gst_number: string | null
           id: string
+          landline_number: string | null
+          landmark: string | null
           owners_list: Json | null
           pan_number: string | null
           pdf_url: string | null
-          primary_address: string | null
+          primary_address: string
           primary_shop_location: Json | null
-          primary_shop_name: string | null
+          primary_shop_name: string
+          proposed_status: string | null
           scoring: Json | null
           se_id: string | null
+          se_signature: string | null
           status: string | null
           total_score: number | null
+          update_history: Json | null
+          updated_at: string | null
         }
         Insert: {
           additional_locations?: Json | null
@@ -48,9 +55,10 @@ export type Database = {
           bank_details?: Json | null
           category?: string | null
           commitments?: Json | null
-          contact_mobile?: string | null
-          contact_person?: string | null
-          created_at?: string
+          contact_mobile: string
+          contact_person: string
+          created_at?: string | null
+          dealer_signature?: string | null
           demo_farmers_data?: Json | null
           distributor_links?: Json | null
           documents?: Json | null
@@ -58,16 +66,22 @@ export type Database = {
           firm_type?: string | null
           gst_number?: string | null
           id?: string
+          landline_number?: string | null
+          landmark?: string | null
           owners_list?: Json | null
           pan_number?: string | null
           pdf_url?: string | null
-          primary_address?: string | null
+          primary_address: string
           primary_shop_location?: Json | null
-          primary_shop_name?: string | null
+          primary_shop_name: string
+          proposed_status?: string | null
           scoring?: Json | null
           se_id?: string | null
+          se_signature?: string | null
           status?: string | null
           total_score?: number | null
+          update_history?: Json | null
+          updated_at?: string | null
         }
         Update: {
           additional_locations?: Json | null
@@ -75,9 +89,10 @@ export type Database = {
           bank_details?: Json | null
           category?: string | null
           commitments?: Json | null
-          contact_mobile?: string | null
-          contact_person?: string | null
-          created_at?: string
+          contact_mobile?: string
+          contact_person?: string
+          created_at?: string | null
+          dealer_signature?: string | null
           demo_farmers_data?: Json | null
           distributor_links?: Json | null
           documents?: Json | null
@@ -85,16 +100,22 @@ export type Database = {
           firm_type?: string | null
           gst_number?: string | null
           id?: string
+          landline_number?: string | null
+          landmark?: string | null
           owners_list?: Json | null
           pan_number?: string | null
           pdf_url?: string | null
-          primary_address?: string | null
+          primary_address?: string
           primary_shop_location?: Json | null
-          primary_shop_name?: string | null
+          primary_shop_name?: string
+          proposed_status?: string | null
           scoring?: Json | null
           se_id?: string | null
+          se_signature?: string | null
           status?: string | null
           total_score?: number | null
+          update_history?: Json | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -108,97 +129,112 @@ export type Database = {
       }
       distributors: {
         Row: {
-          address: string | null
+          address: string
           annexures: Json | null
           band: string | null
           bank_details: Json | null
           business_scope: Json | null
-          city: string | null
+          city: string
           commitments: Json | null
-          contact_mobile: string | null
-          contact_person: string | null
-          created_at: string
+          contact_designation: string | null
+          contact_mobile: string
+          contact_person: string
+          created_at: string | null
           dealer_network: Json | null
+          distributor_signature: string | null
           documents: Json | null
           email: string | null
           est_year: string | null
-          firm_name: string | null
+          firm_name: string
           firm_type: string | null
           gst_number: string | null
           id: string
-          owner_name: string | null
+          owner_name: string
           pan_number: string | null
           pdf_url: string | null
           pincode: string | null
           raw_data: Json | null
           scoring: Json | null
-          se_id: string | null
-          state: string | null
+          se_id: string
+          se_signature: string | null
+          state: string
           status: string | null
           taluka: string | null
           total_score: number | null
+          update_history: Json | null
+          updated_at: string | null
         }
         Insert: {
-          address?: string | null
+          address: string
           annexures?: Json | null
           band?: string | null
           bank_details?: Json | null
           business_scope?: Json | null
-          city?: string | null
+          city: string
           commitments?: Json | null
-          contact_mobile?: string | null
-          contact_person?: string | null
-          created_at?: string
+          contact_designation?: string | null
+          contact_mobile: string
+          contact_person: string
+          created_at?: string | null
           dealer_network?: Json | null
+          distributor_signature?: string | null
           documents?: Json | null
           email?: string | null
           est_year?: string | null
-          firm_name?: string | null
+          firm_name: string
           firm_type?: string | null
           gst_number?: string | null
           id?: string
-          owner_name?: string | null
+          owner_name: string
           pan_number?: string | null
           pdf_url?: string | null
           pincode?: string | null
           raw_data?: Json | null
           scoring?: Json | null
-          se_id?: string | null
-          state?: string | null
+          se_id: string
+          se_signature?: string | null
+          state: string
           status?: string | null
           taluka?: string | null
           total_score?: number | null
+          update_history?: Json | null
+          updated_at?: string | null
         }
         Update: {
-          address?: string | null
+          address?: string
           annexures?: Json | null
           band?: string | null
           bank_details?: Json | null
           business_scope?: Json | null
-          city?: string | null
+          city?: string
           commitments?: Json | null
-          contact_mobile?: string | null
-          contact_person?: string | null
-          created_at?: string
+          contact_designation?: string | null
+          contact_mobile?: string
+          contact_person?: string
+          created_at?: string | null
           dealer_network?: Json | null
+          distributor_signature?: string | null
           documents?: Json | null
           email?: string | null
           est_year?: string | null
-          firm_name?: string | null
+          firm_name?: string
           firm_type?: string | null
           gst_number?: string | null
           id?: string
-          owner_name?: string | null
+          owner_name?: string
           pan_number?: string | null
           pdf_url?: string | null
           pincode?: string | null
           raw_data?: Json | null
           scoring?: Json | null
-          se_id?: string | null
-          state?: string | null
+          se_id?: string
+          se_signature?: string | null
+          state?: string
           status?: string | null
           taluka?: string | null
           total_score?: number | null
+          update_history?: Json | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -210,57 +246,106 @@ export type Database = {
           },
         ]
       }
-      farmers: {
+      drafts: {
         Row: {
-          created_at: string
-          dealer_id: string | null
-          farm_details: Json | null
-          full_name: string | null
-          history_details: Json | null
+          created_at: string | null
+          current_step: number
+          draft_data: Json
+          entity_id: string
+          entity_type: string
           id: string
-          mobile: string | null
-          pdf_url: string | null
-          personal_details: Json | null
-          se_id: string | null
-          status: string | null
-          village: string | null
+          se_id: string
+          update_history: Json | null
+          updated_at: string | null
         }
         Insert: {
-          created_at?: string
-          dealer_id?: string | null
-          farm_details?: Json | null
-          full_name?: string | null
-          history_details?: Json | null
+          created_at?: string | null
+          current_step?: number
+          draft_data?: Json
+          entity_id: string
+          entity_type: string
           id?: string
-          mobile?: string | null
-          pdf_url?: string | null
-          personal_details?: Json | null
-          se_id?: string | null
-          status?: string | null
-          village?: string | null
+          se_id: string
+          update_history?: Json | null
+          updated_at?: string | null
         }
         Update: {
-          created_at?: string
-          dealer_id?: string | null
-          farm_details?: Json | null
-          full_name?: string | null
-          history_details?: Json | null
+          created_at?: string | null
+          current_step?: number
+          draft_data?: Json
+          entity_id?: string
+          entity_type?: string
           id?: string
-          mobile?: string | null
-          pdf_url?: string | null
-          personal_details?: Json | null
-          se_id?: string | null
-          status?: string | null
-          village?: string | null
+          se_id?: string
+          update_history?: Json | null
+          updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "farmers_dealer_id_fkey"
-            columns: ["dealer_id"]
+            foreignKeyName: "drafts_se_id_fkey"
+            columns: ["se_id"]
             isOneToOne: false
-            referencedRelation: "dealers"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      farmers: {
+        Row: {
+          created_at: string | null
+          dealer_id: string | null
+          farm_details: Json
+          farmer_signature: string
+          full_name: string
+          history_details: Json
+          id: string
+          mobile: string
+          pdf_url: string | null
+          personal_details: Json
+          se_id: string
+          se_signature: string
+          status: string | null
+          update_history: Json | null
+          updated_at: string | null
+          village: string
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id?: string | null
+          farm_details?: Json
+          farmer_signature: string
+          full_name: string
+          history_details?: Json
+          id?: string
+          mobile: string
+          pdf_url?: string | null
+          personal_details?: Json
+          se_id: string
+          se_signature: string
+          status?: string | null
+          update_history?: Json | null
+          updated_at?: string | null
+          village: string
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string | null
+          farm_details?: Json
+          farmer_signature?: string
+          full_name?: string
+          history_details?: Json
+          id?: string
+          mobile?: string
+          pdf_url?: string | null
+          personal_details?: Json
+          se_id?: string
+          se_signature?: string
+          status?: string | null
+          update_history?: Json | null
+          updated_at?: string | null
+          village?: string
+        }
+        Relationships: [
           {
             foreignKeyName: "farmers_se_id_fkey"
             columns: ["se_id"]
@@ -270,28 +355,150 @@ export type Database = {
           },
         ]
       }
+      fpos: {
+        Row: {
+          address: string
+          agreement_accepted: boolean | null
+          band: string | null
+          bank_details: Json | null
+          bod_president_name: string
+          business_scope: Json | null
+          ceo_name: string
+          city: string
+          command_area: string | null
+          commitments: Json | null
+          contact_mobile: string
+          created_at: string | null
+          documents: Json | null
+          email: string | null
+          fpo_name: string
+          fpo_signature: string | null
+          gst_number: string | null
+          id: string
+          incorporation_year: string | null
+          member_base: Json | null
+          pan_number: string | null
+          pdf_url: string | null
+          pincode: string | null
+          promoting_agency: string | null
+          registration_number: string | null
+          scoring: Json | null
+          se_id: string
+          se_signature: string | null
+          state: string
+          status: string | null
+          storage_locations: Json | null
+          taluka: string | null
+          total_score: number | null
+          update_history: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          address: string
+          agreement_accepted?: boolean | null
+          band?: string | null
+          bank_details?: Json | null
+          bod_president_name: string
+          business_scope?: Json | null
+          ceo_name: string
+          city: string
+          command_area?: string | null
+          commitments?: Json | null
+          contact_mobile: string
+          created_at?: string | null
+          documents?: Json | null
+          email?: string | null
+          fpo_name: string
+          fpo_signature?: string | null
+          gst_number?: string | null
+          id?: string
+          incorporation_year?: string | null
+          member_base?: Json | null
+          pan_number?: string | null
+          pdf_url?: string | null
+          pincode?: string | null
+          promoting_agency?: string | null
+          registration_number?: string | null
+          scoring?: Json | null
+          se_id: string
+          se_signature?: string | null
+          state: string
+          status?: string | null
+          storage_locations?: Json | null
+          taluka?: string | null
+          total_score?: number | null
+          update_history?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string
+          agreement_accepted?: boolean | null
+          band?: string | null
+          bank_details?: Json | null
+          bod_president_name?: string
+          business_scope?: Json | null
+          ceo_name?: string
+          city?: string
+          command_area?: string | null
+          commitments?: Json | null
+          contact_mobile?: string
+          created_at?: string | null
+          documents?: Json | null
+          email?: string | null
+          fpo_name?: string
+          fpo_signature?: string | null
+          gst_number?: string | null
+          id?: string
+          incorporation_year?: string | null
+          member_base?: Json | null
+          pan_number?: string | null
+          pdf_url?: string | null
+          pincode?: string | null
+          promoting_agency?: string | null
+          registration_number?: string | null
+          scoring?: Json | null
+          se_id?: string
+          se_signature?: string | null
+          state?: string
+          status?: string | null
+          storage_locations?: Json | null
+          taluka?: string | null
+          total_score?: number | null
+          update_history?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpos_se_id_fkey"
+            columns: ["se_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
-          created_at: string
+          created_at: string | null
           email: string | null
           id: string
-          mobile: string | null
+          mobile: string
           name: string
           role: string
         }
         Insert: {
-          created_at?: string
+          created_at?: string | null
           email?: string | null
-          id?: string
-          mobile?: string | null
+          id: string
+          mobile: string
           name: string
-          role?: string
+          role: string
         }
         Update: {
-          created_at?: string
+          created_at?: string | null
           email?: string | null
           id?: string
-          mobile?: string | null
+          mobile?: string
           name?: string
           role?: string
         }
@@ -300,33 +507,36 @@ export type Database = {
       sales_executive: {
         Row: {
           assets_details: Json | null
-          created_at: string
+          created_at: string | null
           documents: Json | null
           financial_details: Json | null
-          is_profile_complete: boolean
+          is_profile_complete: boolean | null
           organization_details: Json | null
           personal_details: Json | null
           profile_id: string
+          updated_at: string | null
         }
         Insert: {
           assets_details?: Json | null
-          created_at?: string
+          created_at?: string | null
           documents?: Json | null
           financial_details?: Json | null
-          is_profile_complete?: boolean
+          is_profile_complete?: boolean | null
           organization_details?: Json | null
           personal_details?: Json | null
           profile_id: string
+          updated_at?: string | null
         }
         Update: {
           assets_details?: Json | null
-          created_at?: string
+          created_at?: string | null
           documents?: Json | null
           financial_details?: Json | null
-          is_profile_complete?: boolean
+          is_profile_complete?: boolean | null
           organization_details?: Json | null
           personal_details?: Json | null
           profile_id?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -338,12 +548,44 @@ export type Database = {
           },
         ]
       }
+      user_permissions: {
+        Row: {
+          can_edit: boolean | null
+          can_view: boolean | null
+          id: string
+          module_name: string
+          user_id: string | null
+        }
+        Insert: {
+          can_edit?: boolean | null
+          can_view?: boolean | null
+          id?: string
+          module_name: string
+          user_id?: string | null
+        }
+        Update: {
+          can_edit?: boolean | null
+          can_view?: boolean | null
+          id?: string
+          module_name?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_permissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_role: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never

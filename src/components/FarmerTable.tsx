@@ -3,7 +3,8 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, DataTableColumn, DataTableFilter } from './DataTable';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MapPin, Phone, User, Calendar as CalendarIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button'; // 🚀 Added Button import
+import { MapPin, Phone, User, Calendar as CalendarIcon, Eye, Edit2 } from 'lucide-react';
 
 export interface FarmerRow {
   id: string;
@@ -45,9 +46,10 @@ interface FarmerTableProps {
   onSelect: (r: FarmerRow) => void;
   seOptions?: { value: string; label: string }[];
   onFilteredDataChange?: (data: FarmerRow[]) => void;
+  canEdit: boolean; // 🚀 Added dynamic edit permission prop
 }
 
-const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: FarmerTableProps) => {
+const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, canEdit }: FarmerTableProps) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -74,7 +76,6 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
     {
       key: 'status', label: 'Status',
       options: getUniqueStatuses(dateFilteredRows),
-      // UPDATED PREDICATE LOGIC FOR MULTI-SELECT
       predicate: (row, values) => values.includes(row.status as string),
     },
     {
@@ -99,7 +100,7 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
     }
   ], [dateFilteredRows, seOptions]);
 
-  // Wrap columns in useMemo to prevent re-creating references on every render
+  // Columns are rebuilt when canEdit dependency changes
   const columns: DataTableColumn<FarmerRow>[] = useMemo(() => [
     {
       key: 'full_name', header: 'Full Name', 
@@ -152,7 +153,19 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: F
         ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
         : <Badge variant={r?.status === 'SUBMITTED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
     },
-  ], []); // Empty dependencies because columns layout is static
+    {
+      key: 'actions', header: 'Actions', className: 'text-right', headerClassName: 'font-semibold text-right pr-4',
+      accessor: r => canEdit ? (
+        <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={(e) => { e.stopPropagation(); onSelect(r); }}>
+          <Edit2 className="h-3.5 w-3.5" /> Edit
+        </Button>
+      ) : (
+        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={(e) => { e.stopPropagation(); onSelect(r); }}>
+          <Eye className="h-3.5 w-3.5" /> View
+        </Button>
+      )
+    }
+  ], [canEdit, onSelect]); // 🚀 Added dependencies here to safely handle action toggle
 
   return (
     <div className="space-y-4">

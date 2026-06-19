@@ -4,6 +4,7 @@ import { LogOut, Menu, Sprout } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import AppSidebar from './AppSidebar';
+import { useAuth } from '@/hooks/useAuth'; // 🚀 IMPORT THE AUTH HOOK
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -13,11 +14,26 @@ interface AppLayoutProps {
 const AppLayout = ({ children, onLogout }: AppLayoutProps) => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { role, loading } = useAuth();
+
+  if (loading) return null;
 
   const handleLogout = () => {
     onLogout();
     navigate('/');
   };
+
+  if (role === 'SE') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-center p-4">
+        <h2 className="text-2xl font-bold text-red-600 mb-2">Mobile App Only</h2>
+        <p className="text-muted-foreground mb-6">
+          Sales Executives must use the Earthflow Mobile Application. Web access is restricted.
+        </p>
+        <Button onClick={onLogout}>Sign Out</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-background">

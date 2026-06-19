@@ -57,6 +57,7 @@ interface DealerTableProps {
   rows: DealerRow[];
   onSelect: (r: DealerRow) => void;
   seOptions?: { value: string; label: string }[];
+  onFilteredDataChange?: (data: DealerRow[]) => void;
 }
 
 const DealerTable = ({ rows, onSelect, seOptions = [] }: DealerTableProps) => {

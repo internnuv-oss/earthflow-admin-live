@@ -1,21 +1,33 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import AppLayout from '@/components/AppLayout';
 import FpoTable, { FpoRow } from '@/components/FpoTable';
 import FpoDetailSheet from '@/components/FpoDetailSheet';
-import { Loader2, FileSpreadsheet, FileText } from 'lucide-react';
+import { Loader2, FileSpreadsheet, FileText, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Props { onLogout: () => void; }
 
 const FposPage = ({ onLogout }: Props) => {
+  // ==========================================
+  // 1. ALL HOOKS MUST BE DECLARED FIRST
+  // Absolutely no `if` statements or `return` statements above this section!
+  // ==========================================
   const [rows, setRows] = useState<FpoRow[]>([]);
   const [filteredData, setFilteredData] = useState<FpoRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); 
   const [selected, setSelected] = useState<FpoRow | null>(null);
   const [seList, setSeList] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
+
+  const { session, loading: authLoading } = useAuth();
+  const userId = session?.user?.id;
+  
+  const { getModulePerm, loading: permLoading } = usePermissions(userId || '');
+  const fpoAccess = getModulePerm('fpos');
 
   useEffect(() => {
     (async () => {
@@ -26,13 +38,15 @@ const FposPage = ({ onLogout }: Props) => {
         setSeList(uniqueNames.map(name => ({ value: name as string, label: name as string })));
       }
 
-      // 2. Fetch Submitted FPOs (use 'any' cast if types aren't updated yet)
+      // 2. Fetch Submitted FPOs
       const { data: fposData, error } = await (supabase as any)
         .from('fpos')
         .select('*, profiles:se_id(name)')
         .order('created_at', { ascending: false });
 
-      if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
+      if (error) {
+        toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
+      }
 
       // 3. Fetch FPO Drafts
       const { data: draftsData } = await (supabase as any)
@@ -84,6 +98,32 @@ const FposPage = ({ onLogout }: Props) => {
     })();
   }, [toast]);
 
+  // ==========================================
+  // 2. NOW IT IS SAFE TO DO EARLY RETURNS
+  // ==========================================
+  if (authLoading || permLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!fpoAccess.can_view) {
+    return (
+      <AppLayout onLogout={onLogout}>
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+          <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">You do not have permission to view the FPO directory.</p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ==========================================
+  // 3. EXPORT FUNCTIONS & MAIN RETURN
+  // ==========================================
   const handleExportExcel = () => {
     const headers = ['Sr. No.', 'FPO Name', 'Reg Number', 'Contact Mobile', 'City', 'State', 'CEO Name', 'Onboarded By', 'Date', 'Status'];
     const csvRows = [headers.join(',')];
