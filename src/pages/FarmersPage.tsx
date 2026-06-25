@@ -6,7 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import FarmerTable, { FarmerRow } from '@/components/FarmerTable';
 import FarmerDetailSheet from '@/components/FarmerDetailSheet';
 import FarmerMapView from '@/components/FarmerMapView'; 
-import { Loader2, FileSpreadsheet, FileText, Map, List, Shield } from 'lucide-react';
+import { Loader2, FileSpreadsheet, FileText, Map, List, Shield, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'; 
 import { usePermissions } from '@/hooks/usePermissions';
@@ -150,6 +150,142 @@ const FarmersPage = ({ onLogout }: Props) => {
     window.URL.revokeObjectURL(url);
   };
 
+// 🚀 NEW: Fully Dynamic Flattened Export (Auto-detects all trees, cattle, and crops!)
+const handleExportFullDataCSV = () => {
+  // 1. PRE-SCAN THE DATA: Find all unique dropdown values used by your farmers
+  const cattleTypes = new Set<string>();
+  const treeTypes = new Set<string>();
+  let maxPastCrops = 0;
+
+  filteredData.forEach(row => {
+    const fd = row.farm_details || {};
+    const hd = row.history_details || {};
+
+    if (Array.isArray(fd.cattles)) {
+      fd.cattles.forEach((c: any) => { if (c.type) cattleTypes.add(c.type); });
+    }
+    if (Array.isArray(fd.sideTrees)) {
+      fd.sideTrees.forEach((t: any) => { if (t.type) treeTypes.add(t.type); });
+    }
+    if (Array.isArray(hd.pastCrops) && hd.pastCrops.length > maxPastCrops) {
+      maxPastCrops = hd.pastCrops.length;
+    }
+  });
+
+  const uniqueCattles = Array.from(cattleTypes).sort();
+  const uniqueTrees = Array.from(treeTypes).sort();
+
+  // 2. BUILD DYNAMIC HEADERS
+  const headers = [
+    'Sr. No.', 'Status', 'Onboarded By', 'Date Onboarded', 'Full Name', 'Mobile',
+    'Alternate Mobile', 'Father Name', 'Village', 'Taluka', 'District/City', 'State',
+    'Pincode', 'Total Land', 'Land Unit', 'Irrigated Land', 'Rain Fed Land',
+    'Major Crops', 'Soil Type', 'Water Source', 'Irrigation Type', 'Farm Equipments',
+    'Biofertilizer Used', 'Is Intercropping'
+  ];
+
+  // Auto-generate a column for EVERY cattle type found
+  uniqueCattles.forEach(c => headers.push(`Cattle: ${c} (Qty)`));
+  
+  // Auto-generate a column for EVERY tree type found
+  uniqueTrees.forEach(t => headers.push(`Trees: ${t} (Qty)`));
+
+  // Auto-generate grouped columns up to the maximum past crops anyone has
+  for (let i = 1; i <= maxPastCrops; i++) {
+    headers.push(
+      `Past Crop ${i}: Name`, 
+      `Past Crop ${i}: Area`, 
+      `Past Crop ${i}: Area Unit`, 
+      `Past Crop ${i}: Yield`, 
+      `Past Crop ${i}: Yield Unit`, 
+      `Past Crop ${i}: Inputs Used`,
+      `Past Crop ${i}: Problems Faced`
+    );
+  }
+
+  // 3. HELPERS
+  const escape = (val: any) => {
+    if (val === null || val === undefined || val === '') return '""';
+    const str = String(val).replace(/"/g, '""'); 
+    return `"${str}"`;
+  };
+  const joinArray = (arr: any) => Array.isArray(arr) ? arr.join('; ') : arr || '';
+  const getQuantity = (arr: any, typeName: string) => {
+    if (!Array.isArray(arr)) return '0';
+    const item = arr.find((obj: any) => obj.type === typeName);
+    return item ? item.quantity : '0';
+  };
+
+  const csvRows = [headers.join(',')];
+  
+  // 4. MAP THE DATA TO THE DYNAMIC COLUMNS
+  filteredData.forEach((row, index) => {
+    const pd = row.personal_details || {};
+    const fd = row.farm_details || {};
+    const hd = row.history_details || {};
+
+    // Start with standard base data
+    const baseRow = [
+      escape(index + 1),
+      escape(row.status || 'SUBMITTED'),
+      escape(row.profiles?.name || '—'),
+      escape(new Date(row.created_at).toLocaleDateString()),
+      escape(row.full_name),
+      escape(row.mobile),
+      escape(pd.alternateMobile),
+      escape(pd.fatherName),
+      escape(row.village || pd.village),
+      escape(pd.taluka),
+      escape(pd.city),
+      escape(pd.state),
+      escape(pd.pincode),
+      escape(fd.totalLand),
+      escape(fd.landUnit),
+      escape(fd.irrigatedLand),
+      escape(fd.rainFedLand),
+      escape(joinArray(fd.majorCrops)),
+      escape(joinArray(fd.soilType)),
+      escape(joinArray(fd.waterSource)),
+      escape(joinArray(fd.irrigationType)),
+      escape(joinArray(fd.farmEquipments)),
+      escape(fd.biofertilizer),
+      escape(fd.isIntercropping)
+    ];
+
+    // Add Dynamic Cattle Quantities
+    uniqueCattles.forEach(c => baseRow.push(escape(getQuantity(fd.cattles, c))));
+
+    // Add Dynamic Tree Quantities
+    uniqueTrees.forEach(t => baseRow.push(escape(getQuantity(fd.sideTrees, t))));
+
+    // Add Dynamic Past Crops
+    const pastCropsArray = Array.isArray(hd.pastCrops) ? hd.pastCrops : [];
+    for (let i = 0; i < maxPastCrops; i++) {
+      const crop = pastCropsArray[i] || {};
+      baseRow.push(
+        escape(crop.cropName || ''),
+        escape(crop.area || ''),
+        escape(crop.areaUnit || ''),
+        escape(crop.yield || ''),
+        escape(crop.yieldUnit || ''),
+        escape(joinArray(crop.inputUsed)),
+        escape(crop.problemsFaced || '')
+      );
+    }
+
+    csvRows.push(baseRow.join(','));
+  });
+
+  // 5. GENERATE FILE
+  const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `farmers_dynamic_analytics_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+};
+
   const handleExportPDF = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -228,6 +364,15 @@ const FarmersPage = ({ onLogout }: Props) => {
                 onClick={handleExportExcel}
               >
                 <FileSpreadsheet className="h-4 w-4" /> CSV
+              </Button>
+              {/* 🚀 NEW Full Data CSV Button */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 text-blue-700 hover:text-blue-800"
+                onClick={handleExportFullDataCSV}
+              >
+                <Download className="h-4 w-4" /> Full Data CSV
               </Button>
               <Button 
                 variant="outline" 

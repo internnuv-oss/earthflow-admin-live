@@ -111,7 +111,11 @@ const AdminUserManagement = () => {
       });
       return;
     }
-
+    if (mobile.trim().length !== 10) {
+        toast({ title: 'Validation Error', description: 'Mobile number must be exactly 10 digits.', variant: 'destructive' });
+        return;
+      }
+      
     toast({
       title: "User Created!",
       description: `${name} has been successfully added as a ${role === 'TH' ? 'Admin' : 'Coordinator'}.`,
@@ -216,7 +220,7 @@ const AdminUserManagement = () => {
                 <Label htmlFor="admin-email">Email Address</Label>
                 <div className="relative">
                   <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input id="admin-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@example.com" />
+                  <Input id="admin-email" type="email" value={email} onChange={e => setEmail(e.target.value)} className="pl-9" placeholder="john@example.com" />
                 </div>
               </div>
 
