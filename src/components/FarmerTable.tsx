@@ -3,8 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, DataTableColumn, DataTableFilter } from './DataTable';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button'; // 🚀 Added Button import
-import { MapPin, Phone, User, Calendar as CalendarIcon, Eye, Edit2 } from 'lucide-react';
+import { MapPin, Phone, User, Calendar as CalendarIcon } from 'lucide-react';
 
 export interface FarmerRow {
   id: string;
@@ -46,10 +45,11 @@ interface FarmerTableProps {
   onSelect: (r: FarmerRow) => void;
   seOptions?: { value: string; label: string }[];
   onFilteredDataChange?: (data: FarmerRow[]) => void;
-  canEdit: boolean; // 🚀 Added dynamic edit permission prop
+  canEdit: boolean; 
+  villageToRoute: Record<string, string>; // 🚀 FIXED TYPE SCHEMATIC NAME
 }
 
-const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, canEdit }: FarmerTableProps) => {
+export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, canEdit, villageToRoute }: FarmerTableProps) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -100,7 +100,6 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, can
     }
   ], [dateFilteredRows, seOptions]);
 
-  // Columns are rebuilt when canEdit dependency changes
   const columns: DataTableColumn<FarmerRow>[] = useMemo(() => [
     {
       key: 'full_name', header: 'Full Name', 
@@ -121,6 +120,24 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, can
         <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{r.mobile}</span>
       ) : '—',
     },
+    // 🚀 PLACED PERFECTLY BETWEEN MOBILE AND LOCATION
+    {
+      key: 'assigned_route', header: 'Route Name',
+      sortable: true, sortValue: r => {
+        const safeVillage = (r.village || '').trim().toLowerCase();
+        return (villageToRoute[safeVillage] || 'Unassigned').toLowerCase();
+      },
+      accessor: r => {
+        const safeVillage = (r.village || '').trim().toLowerCase();
+        const routeName = villageToRoute[safeVillage];
+        
+        return (
+          <span className={`font-semibold text-sm ${routeName ? 'text-primary' : 'text-muted-foreground italic'}`}>
+            {routeName || 'Unassigned'}
+          </span>
+        );
+      }
+    },
     {
       key: 'location', header: 'Location', 
       sortable: true, sortValue: r => (`${r?.village} ${r?.taluka} ${r?.district}`).toLowerCase(),
@@ -139,7 +156,7 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, can
     { 
       key: 'se', header: 'Onboarded By', 
       sortable: true, sortValue: r => (r?.profiles?.name || '').toLowerCase(),
-      accessor: r => <span className="text-muted-foreground text-sm">{r?.profiles?.name || '—'}</span> 
+      accessor: r => <span className="text-muted-foreground text-sm font-medium">{r?.profiles?.name || '—'}</span> 
     },
     { 
       key: 'created_at', header: 'Date Onboarded', 
@@ -152,20 +169,8 @@ const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, can
       accessor: r => r?.status === 'DRAFT' 
         ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
         : <Badge variant={r?.status === 'SUBMITTED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
-    },
-    {
-      key: 'actions', header: 'Actions', className: 'text-right', headerClassName: 'font-semibold text-right pr-4',
-      accessor: r => canEdit ? (
-        <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={(e) => { e.stopPropagation(); onSelect(r); }}>
-          <Edit2 className="h-3.5 w-3.5" /> Edit
-        </Button>
-      ) : (
-        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={(e) => { e.stopPropagation(); onSelect(r); }}>
-          <Eye className="h-3.5 w-3.5" /> View
-        </Button>
-      )
     }
-  ], [canEdit, onSelect]); // 🚀 Added dependencies here to safely handle action toggle
+  ], [villageToRoute]);
 
   return (
     <div className="space-y-4">

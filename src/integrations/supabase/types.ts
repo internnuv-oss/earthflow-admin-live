@@ -290,6 +290,63 @@ export type Database = {
           },
         ]
       }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string | null
+          date: string
+          id: string
+          receipt_url: string
+          remarks: string | null
+          se_id: string
+          shift_id: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string | null
+          date: string
+          id?: string
+          receipt_url: string
+          remarks?: string | null
+          se_id: string
+          shift_id?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string | null
+          date?: string
+          id?: string
+          receipt_url?: string
+          remarks?: string | null
+          se_id?: string
+          shift_id?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_se_id_fkey"
+            columns: ["se_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       farmers: {
         Row: {
           created_at: string | null
@@ -504,6 +561,87 @@ export type Database = {
         }
         Relationships: []
       }
+      route_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          id: string
+          route_id: string
+          se_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          id?: string
+          route_id: string
+          se_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          id?: string
+          route_id?: string
+          se_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_assignments_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_assignments_se_id_fkey"
+            columns: ["se_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      routes: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          locations: Json
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          locations?: Json
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          locations?: Json
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_executive: {
         Row: {
           assets_details: Json | null
@@ -543,6 +681,86 @@ export type Database = {
             foreignKeyName: "sales_executive_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shifts: {
+        Row: {
+          activities_logged: number | null
+          created_at: string | null
+          date: string
+          end_km: string | null
+          end_location: Json | null
+          end_odo_image: string | null
+          end_time: number | null
+          events: Json
+          id: string
+          is_personal_vehicle: boolean | null
+          route_path: Json | null
+          se_id: string
+          start_km: string | null
+          start_location: Json | null
+          start_odo_image: string | null
+          start_time: number
+          status: string
+          total_distance: number | null
+          transit_mode: string | null
+          updated_at: string | null
+          vehicle_type: string | null
+        }
+        Insert: {
+          activities_logged?: number | null
+          created_at?: string | null
+          date?: string
+          end_km?: string | null
+          end_location?: Json | null
+          end_odo_image?: string | null
+          end_time?: number | null
+          events?: Json
+          id?: string
+          is_personal_vehicle?: boolean | null
+          route_path?: Json | null
+          se_id: string
+          start_km?: string | null
+          start_location?: Json | null
+          start_odo_image?: string | null
+          start_time: number
+          status?: string
+          total_distance?: number | null
+          transit_mode?: string | null
+          updated_at?: string | null
+          vehicle_type?: string | null
+        }
+        Update: {
+          activities_logged?: number | null
+          created_at?: string | null
+          date?: string
+          end_km?: string | null
+          end_location?: Json | null
+          end_odo_image?: string | null
+          end_time?: number | null
+          events?: Json
+          id?: string
+          is_personal_vehicle?: boolean | null
+          route_path?: Json | null
+          se_id?: string
+          start_km?: string | null
+          start_location?: Json | null
+          start_odo_image?: string | null
+          start_time?: number
+          status?: string
+          total_distance?: number | null
+          transit_mode?: string | null
+          updated_at?: string | null
+          vehicle_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_se_id_fkey"
+            columns: ["se_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },

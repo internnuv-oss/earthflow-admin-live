@@ -9,6 +9,7 @@ import {
   Settings,
   ChevronDown,
   UserCog,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/dealers', label: 'Dealers', icon: Users, module: 'dealers' },
   { to: '/farmers', label: 'Farmers', icon: Wheat, module: 'farmers' },
   { to: '/fpos', label: 'FPOs', icon: Sprout, module: 'fpos' },
+  { to: '/routes', label: 'Territory Routes', icon: MapPin, module: 'routes' },
 ];
 
 const settingsChildren = [

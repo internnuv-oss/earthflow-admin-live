@@ -12,8 +12,8 @@ interface Permission {
   can_edit: boolean;
 }
 
-// 🚀 FIXED: Changed 'se' to 'sales_executives' to match AppSidebar.tsx
-const MODULES = ['farmers', 'dealers', 'distributors', 'fpos', 'sales_executives'];
+// 🚀 FIXED: Added 'routes' to your modules matrix array
+const MODULES = ['farmers', 'dealers', 'distributors', 'fpos', 'sales_executives', 'routes'];
 
 export const PermissionEditor = ({ userId, onSave }: { userId: string, onSave: () => void }) => {
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -42,11 +42,32 @@ export const PermissionEditor = ({ userId, onSave }: { userId: string, onSave: (
 
   const save = async () => {
     setLoading(true);
-    const toUpsert = permissions.map(p => ({ ...p, user_id: userId }));
-    const { error } = await supabase.from('user_permissions').upsert(toUpsert);
     
-    if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
-    else {
+    // 🚀 FIX: Safely strip out 'id' if it's undefined or null so Postgres can auto-generate it!
+    const toUpsert = permissions.map(p => {
+      const row: any = {
+        user_id: userId,
+        module_name: p.module_name,
+        can_view: p.can_view,
+        can_edit: p.can_edit
+      };
+      
+      // Only include the id property if it actually exists (for updating existing rows)
+      if (p.id) {
+        row.id = p.id;
+      }
+      
+      return row;
+    });
+
+    // 🚀 Explicitly handle the conflict resolution based on unique constraints
+    const { error } = await supabase
+      .from('user_permissions')
+      .upsert(toUpsert, { onConflict: 'user_id,module_name' });
+    
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
       toast({ title: "Access Updated!" });
       onSave();
     }
@@ -59,7 +80,6 @@ export const PermissionEditor = ({ userId, onSave }: { userId: string, onSave: (
     <div className="space-y-4">
       {permissions.map(p => (
         <div key={p.module_name} className="flex items-center justify-between border-b pb-2">
-          {/* 🚀 FIXED: Added .replace('_', ' ') so it displays nicely as "Sales executives" */}
           <span className="capitalize font-medium">{p.module_name.replace('_', ' ')}</span>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 text-sm">

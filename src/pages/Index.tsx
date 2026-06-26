@@ -12,6 +12,7 @@ import SEsPage from './SEsPage';
 import SettingsPage from './SettingsPage';
 import SettingsTemplatePage from './SettingsTemplatePage';
 import NotFound from './NotFound';
+import RoutesPage from './RoutesPage';
 
 const Index = () => {
   const { session, loading } = useAuth();
@@ -33,6 +34,7 @@ const Index = () => {
       <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
       <Route path="/dashboard" element={guard(<Dashboard onLogout={logout} />)} />
       <Route path="/sales-executives" element={guard(<SEsPage onLogout={logout} />)} />
+      <Route path="/routes" element={guard(<RoutesPage onLogout={logout} />)} />
       <Route path="/dealers" element={guard(<DealersPage onLogout={logout} />)} />
       <Route path="/farmers" element={guard(<FarmersPage onLogout={logout} />)} />
       <Route path="/distributors" element={guard(<DistributorsPage onLogout={logout} />)} />

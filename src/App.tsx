@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
-import LoginPage from "./pages/LoginPage.tsx"; // 🚀 FIX: Imported the Login Page
+import LoginPage from "./pages/LoginPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -18,9 +18,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* 🚀 FIX: Added the specific route for the login page */}
           <Route path="/login" element={<LoginPage />} />
-          
           <Route path="/*" element={<Index />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -29,10 +29,48 @@ const FarmersPage = ({ onLogout }: Props) => {
   const userId = session?.user?.id;
   
   const { getModulePerm, loading: permLoading } = usePermissions(userId || '');
+  const [villageToSE, setVillageToSE] = useState<Record<string, string>>({});
+  const [villageToRoute, setVillageToRoute] = useState<Record<string, string>>({});
   const farmerAccess = getModulePerm('farmers');
 
+  const fetchVillageMapping = async () => {
+    console.log("1. 🚀 Starting to fetch village-to-route mappings...");
+    const { data, error } = await supabase
+      .from('route_assignments')
+      .select(`
+        routes(name, locations)
+      `);
+
+    if (error) {
+      console.error("❌ Error fetching route mapping:", error.message);
+      return;
+    }
+
+    if (data) {
+      const mapping: Record<string, string> = {};
+      data.forEach((assignment: any) => {
+        // 🚀 CHANGED: Grab the Route Name instead of SE profile name
+        const routeName = assignment.routes?.name;
+        const locations = assignment.routes?.locations || [];
+        
+        locations.forEach((loc: any) => {
+          loc.villages?.forEach((village: string) => {
+            mapping[village.trim().toLowerCase()] = routeName; 
+          });
+        });
+      });
+      
+      console.log("2. ✅ Successfully mapped villages to Routes:", mapping);
+      setVillageToRoute(mapping);
+    }
+  };
+
+
   useEffect(() => {
+    fetchVillageMapping();
+    
     (async () => {
+      // Fetch SE Profiles for Filters
       const { data: seData } = await supabase
         .from('profiles')
         .select('name')
@@ -43,19 +81,56 @@ const FarmersPage = ({ onLogout }: Props) => {
         setSeList(uniqueNames.map(name => ({ value: name as string, label: name as string })));
       }
 
-      const { data: farmersData, error } = await supabase
-        .from('farmers')
-        .select('*, profiles:se_id(name)')
-        .order('created_at', { ascending: false });
+      // 🚀 NEW: Chunked Fetch Loop for Farmers to bypass API limit capping
+      let allFarmers: any[] = [];
+      let farmerPage = 0;
+      const CHUNK_SIZE = 1000;
+      let fetchMoreFarmers = true;
 
-      if (error) toast({ title: 'Failed to load', description: error.message, variant: 'destructive' });
+      while (fetchMoreFarmers) {
+        const { data: farmerChunk, error: farmerError } = await supabase
+          .from('farmers')
+          .select('*, profiles:se_id(name)')
+          .order('created_at', { ascending: false })
+          .range(farmerPage * CHUNK_SIZE, (farmerPage + 1) * CHUNK_SIZE - 1);
 
-      const { data: draftsData } = await supabase
-        .from('drafts' as any)
-        .select('*, profiles:se_id(name)')
-        .eq('entity_type', 'farmer');
+        if (farmerError) {
+          toast({ title: 'Failed to load farmers', description: farmerError.message, variant: 'destructive' });
+          fetchMoreFarmers = false;
+        } else if (farmerChunk && farmerChunk.length > 0) {
+          allFarmers = [...allFarmers, ...farmerChunk];
+          if (farmerChunk.length < CHUNK_SIZE) fetchMoreFarmers = false;
+          else farmerPage++;
+        } else {
+          fetchMoreFarmers = false;
+        }
+      }
 
-      const formattedDrafts = ((draftsData as any[]) || []).map((draft: any) => {
+      // 🚀 NEW: Chunked Fetch Loop for Drafts to bypass API limits
+      let allDrafts: any[] = [];
+      let draftPage = 0;
+      let fetchMoreDrafts = true;
+
+      while (fetchMoreDrafts) {
+        const { data: draftChunk, error: draftError } = await supabase
+          .from('drafts' as any)
+          .select('*, profiles:se_id(name)')
+          .eq('entity_type', 'farmer')
+          .range(draftPage * CHUNK_SIZE, (draftPage + 1) * CHUNK_SIZE - 1);
+
+        if (draftError) {
+          fetchMoreDrafts = false;
+        } else if (draftChunk && draftChunk.length > 0) {
+          allDrafts = [...allDrafts, ...draftChunk];
+          if (draftChunk.length < CHUNK_SIZE) fetchMoreDrafts = false;
+          else draftPage++;
+        } else {
+          fetchMoreDrafts = false;
+        }
+      }
+
+      // Format Drafts Data
+      const formattedDrafts = allDrafts.map((draft: any) => {
         const d = draft.draft_data || {};
         return {
           id: draft.entity_id,
@@ -83,7 +158,7 @@ const FarmersPage = ({ onLogout }: Props) => {
         };
       });
 
-      const combined = [...(farmersData || []), ...formattedDrafts].map((row: any) => ({
+      const combined = [...allFarmers, ...formattedDrafts].map((row: any) => ({
         ...row,
         district: row.status === 'DRAFT' ? row.district : (row.personal_details?.city || '—'),
         taluka: row.status === 'DRAFT' ? row.taluka : (row.personal_details?.taluka || '—'),
@@ -124,14 +199,19 @@ const FarmersPage = ({ onLogout }: Props) => {
   // 3. EXPORT FUNCTIONS & MAIN RENDER
   // ==========================================
   const handleExportExcel = () => {
-    const headers = ['Sr. No.', 'Full Name', 'Mobile', 'Village', 'Taluka', 'District', 'Onboarded By', 'Date Onboarded', 'Status'];
+    // 🚀 UPDATED: Added 'Assigned SE' column header
+    const headers = ['Sr. No.', 'Full Name', 'Mobile', 'Route Name', 'Village', 'Taluka', 'District', 'Onboarded By', 'Date Onboarded', 'Status'];
     const csvRows = [headers.join(',')];
     
     filteredData.forEach((row, index) => {
+      const safeVillage = (row.village || '').trim().toLowerCase();
+      const routeName = villageToRoute[safeVillage] || 'Unassigned';
+
       csvRows.push([
         `"${index + 1}"`,
         `"${row.full_name || ''}"`,
         `"${row.mobile || ''}"`,
+        `"${routeName}"`, // 🚀 Injected cleanly right after Mobile entries
         `"${row.village || ''}"`,
         `"${row.taluka || ''}"`,
         `"${row.district || ''}"`,
@@ -149,158 +229,149 @@ const FarmersPage = ({ onLogout }: Props) => {
     a.click();
     window.URL.revokeObjectURL(url);
   };
+  const handleExportFullDataCSV = () => {
+    const cattleTypes = new Set<string>();
+    const treeTypes = new Set<string>();
+    let maxPastCrops = 0;
 
-// 🚀 NEW: Fully Dynamic Flattened Export (Auto-detects all trees, cattle, and crops!)
-const handleExportFullDataCSV = () => {
-  // 1. PRE-SCAN THE DATA: Find all unique dropdown values used by your farmers
-  const cattleTypes = new Set<string>();
-  const treeTypes = new Set<string>();
-  let maxPastCrops = 0;
+    filteredData.forEach(row => {
+      const fd = row.farm_details || {};
+      const hd = row.history_details || {};
 
-  filteredData.forEach(row => {
-    const fd = row.farm_details || {};
-    const hd = row.history_details || {};
+      if (Array.isArray(fd.cattles)) {
+        fd.cattles.forEach((c: any) => { if (c.type) cattleTypes.add(c.type); });
+      }
+      if (Array.isArray(fd.sideTrees)) {
+        fd.sideTrees.forEach((t: any) => { if (t.type) treeTypes.add(t.type); });
+      }
+      if (Array.isArray(hd.pastCrops) && hd.pastCrops.length > maxPastCrops) {
+        maxPastCrops = hd.pastCrops.length;
+      }
+    });
 
-    if (Array.isArray(fd.cattles)) {
-      fd.cattles.forEach((c: any) => { if (c.type) cattleTypes.add(c.type); });
-    }
-    if (Array.isArray(fd.sideTrees)) {
-      fd.sideTrees.forEach((t: any) => { if (t.type) treeTypes.add(t.type); });
-    }
-    if (Array.isArray(hd.pastCrops) && hd.pastCrops.length > maxPastCrops) {
-      maxPastCrops = hd.pastCrops.length;
-    }
-  });
+    const uniqueCattles = Array.from(cattleTypes).sort();
+    const uniqueTrees = Array.from(treeTypes).sort();
 
-  const uniqueCattles = Array.from(cattleTypes).sort();
-  const uniqueTrees = Array.from(treeTypes).sort();
-
-  // 2. BUILD DYNAMIC HEADERS
-  const headers = [
-    'Sr. No.', 'Status', 'Onboarded By', 'Date Onboarded', 'Full Name', 'Mobile',
-    'Alternate Mobile', 'Father Name', 'Village', 'Taluka', 'District/City', 'State',
-    'Pincode', 'Total Land', 'Land Unit', 'Irrigated Land', 'Rain Fed Land',
-    'Major Crops', 'Soil Type', 'Water Source', 'Irrigation Type', 'Farm Equipments',
-    'Biofertilizer Used', 'Is Intercropping'
-  ];
-
-  // Auto-generate a column for EVERY cattle type found
-  uniqueCattles.forEach(c => headers.push(`Cattle: ${c} (Qty)`));
-  
-  // Auto-generate a column for EVERY tree type found
-  uniqueTrees.forEach(t => headers.push(`Trees: ${t} (Qty)`));
-
-  // Auto-generate grouped columns up to the maximum past crops anyone has
-  for (let i = 1; i <= maxPastCrops; i++) {
-    headers.push(
-      `Past Crop ${i}: Name`, 
-      `Past Crop ${i}: Area`, 
-      `Past Crop ${i}: Area Unit`, 
-      `Past Crop ${i}: Yield`, 
-      `Past Crop ${i}: Yield Unit`, 
-      `Past Crop ${i}: Inputs Used`,
-      `Past Crop ${i}: Problems Faced`
-    );
-  }
-
-  // 3. HELPERS
-  const escape = (val: any) => {
-    if (val === null || val === undefined || val === '') return '""';
-    const str = String(val).replace(/"/g, '""'); 
-    return `"${str}"`;
-  };
-  const joinArray = (arr: any) => Array.isArray(arr) ? arr.join('; ') : arr || '';
-  const getQuantity = (arr: any, typeName: string) => {
-    if (!Array.isArray(arr)) return '0';
-    const item = arr.find((obj: any) => obj.type === typeName);
-    return item ? item.quantity : '0';
-  };
-
-  const csvRows = [headers.join(',')];
-  
-  // 4. MAP THE DATA TO THE DYNAMIC COLUMNS
-  filteredData.forEach((row, index) => {
-    const pd = row.personal_details || {};
-    const fd = row.farm_details || {};
-    const hd = row.history_details || {};
-
-    // Start with standard base data
-    const baseRow = [
-      escape(index + 1),
-      escape(row.status || 'SUBMITTED'),
-      escape(row.profiles?.name || '—'),
-      escape(new Date(row.created_at).toLocaleDateString()),
-      escape(row.full_name),
-      escape(row.mobile),
-      escape(pd.alternateMobile),
-      escape(pd.fatherName),
-      escape(row.village || pd.village),
-      escape(pd.taluka),
-      escape(pd.city),
-      escape(pd.state),
-      escape(pd.pincode),
-      escape(fd.totalLand),
-      escape(fd.landUnit),
-      escape(fd.irrigatedLand),
-      escape(fd.rainFedLand),
-      escape(joinArray(fd.majorCrops)),
-      escape(joinArray(fd.soilType)),
-      escape(joinArray(fd.waterSource)),
-      escape(joinArray(fd.irrigationType)),
-      escape(joinArray(fd.farmEquipments)),
-      escape(fd.biofertilizer),
-      escape(fd.isIntercropping)
+    const headers = [
+      'Sr. No.', 'Status', 'Onboarded By', 'Assigned SE', 'Date Onboarded', 'Full Name', 'Mobile',
+      'Alternate Mobile', 'Father Name', 'Village', 'Taluka', 'District/City', 'State',
+      'Pincode', 'Total Land', 'Land Unit', 'Irrigated Land', 'Rain Fed Land',
+      'Major Crops', 'Soil Type', 'Water Source', 'Irrigation Type', 'Farm Equipments',
+      'Biofertilizer Used', 'Is Intercropping'
     ];
 
-    // Add Dynamic Cattle Quantities
-    uniqueCattles.forEach(c => baseRow.push(escape(getQuantity(fd.cattles, c))));
+    uniqueCattles.forEach(c => headers.push(`Cattle: ${c} (Qty)`));
+    uniqueTrees.forEach(t => headers.push(`Trees: ${t} (Qty)`));
 
-    // Add Dynamic Tree Quantities
-    uniqueTrees.forEach(t => baseRow.push(escape(getQuantity(fd.sideTrees, t))));
-
-    // Add Dynamic Past Crops
-    const pastCropsArray = Array.isArray(hd.pastCrops) ? hd.pastCrops : [];
-    for (let i = 0; i < maxPastCrops; i++) {
-      const crop = pastCropsArray[i] || {};
-      baseRow.push(
-        escape(crop.cropName || ''),
-        escape(crop.area || ''),
-        escape(crop.areaUnit || ''),
-        escape(crop.yield || ''),
-        escape(crop.yieldUnit || ''),
-        escape(joinArray(crop.inputUsed)),
-        escape(crop.problemsFaced || '')
+    for (let i = 1; i <= maxPastCrops; i++) {
+      headers.push(
+        `Past Crop ${i}: Name`, 
+        `Past Crop ${i}: Area`, 
+        `Past Crop ${i}: Area Unit`, 
+        `Past Crop ${i}: Yield`, 
+        `Past Crop ${i}: Yield Unit`, 
+        `Past Crop ${i}: Inputs Used`,
+        `Past Crop ${i}: Problems Faced`
       );
     }
 
-    csvRows.push(baseRow.join(','));
-  });
+    const escape = (val: any) => {
+      if (val === null || val === undefined || val === '') return '""';
+      const str = String(val).replace(/"/g, '""'); 
+      return `"${str}"`;
+    };
+    const joinArray = (arr: any) => Array.isArray(arr) ? arr.join('; ') : arr || '';
+    const getQuantity = (arr: any, typeName: string) => {
+      if (!Array.isArray(arr)) return '0';
+      const item = arr.find((obj: any) => obj.type === typeName);
+      return item ? item.quantity : '0';
+    };
 
-  // 5. GENERATE FILE
-  const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `farmers_dynamic_analytics_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click();
-  window.URL.revokeObjectURL(url);
-};
+    const csvRows = [headers.join(',')];
+    
+    filteredData.forEach((row, index) => {
+      const pd = row.personal_details || {};
+      const fd = row.farm_details || {};
+      const hd = row.history_details || {};
+
+      // Look up Assigned SE safely by village name case-insensitively
+      const safeVillage = (row.village || pd.village || '').trim().toLowerCase();
+      const assignedSeName = villageToSE[safeVillage] || 'Unassigned';
+
+      // 🚀 UPDATED: Placed escape(assignedSeName) right next to row.profiles?.name
+      const baseRow = [
+        escape(index + 1),
+        escape(row.status || 'SUBMITTED'),
+        escape(row.profiles?.name || '—'),
+        escape(assignedSeName), // 🚀 NEW FLATTENED FIELD
+        escape(new Date(row.created_at).toLocaleDateString()),
+        escape(row.full_name),
+        escape(row.mobile),
+        escape(pd.alternateMobile),
+        escape(pd.fatherName),
+        escape(row.village || pd.village),
+        escape(pd.taluka),
+        escape(pd.city),
+        escape(pd.state),
+        escape(pd.pincode),
+        escape(fd.totalLand),
+        escape(fd.landUnit),
+        escape(fd.irrigatedLand),
+        escape(fd.rainFedLand),
+        escape(joinArray(fd.majorCrops)),
+        escape(joinArray(fd.soilType)),
+        escape(joinArray(fd.waterSource)),
+        escape(joinArray(fd.irrigationType)),
+        escape(joinArray(fd.farmEquipments)),
+        escape(fd.biofertilizer),
+        escape(fd.isIntercropping)
+      ];
+
+    uniqueCattles.forEach(c => baseRow.push(escape(getQuantity(fd.cattles, c))));
+      uniqueTrees.forEach(t => baseRow.push(escape(getQuantity(fd.sideTrees, t))));
+
+      const pastCropsArray = Array.isArray(hd.pastCrops) ? hd.pastCrops : [];
+      for (let i = 0; i < maxPastCrops; i++) {
+        const crop = pastCropsArray[i] || {};
+        baseRow.push(
+          escape(crop.cropName || ''), escape(crop.area || ''), escape(crop.areaUnit || ''),
+          escape(crop.yield || ''), escape(crop.yieldUnit || ''), escape(joinArray(crop.inputUsed)),
+          escape(crop.problemsFaced || '')
+        );
+      }
+
+      csvRows.push(baseRow.join(','));
+    });
+
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `farmers_dynamic_analytics_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   const handleExportPDF = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const rowsHtml = filteredData.map((row, index) => `<tr>
-        <td>${index + 1}</td>
-        <td>${row.full_name || ''}</td>
-        <td>${row.mobile || ''}</td>
-        <td>${row.village || ''}</td>
-        <td>${row.taluka || ''}</td>
-        <td>${row.district || ''}</td>
-        <td>${row.profiles?.name || ''}</td>
-        <td>${new Date(row.created_at).toLocaleDateString()}</td>
-        <td>${row.status || ''}</td>
-    </tr>`).join('');
+    const rowsHtml = filteredData.map((row, index) => {
+      const safeVillage = (row.village || '').trim().toLowerCase();
+      const assignedSeName = villageToSE[safeVillage] || 'Unassigned';
+
+      return `<tr>
+          <td>${index + 1}</td>
+          <td>${row.full_name || ''}</td>
+          <td>${row.mobile || ''}</td>
+          <td>${row.village || ''}</td>
+          <td>${row.taluka || ''}</td>
+          <td>${row.district || ''}</td>
+          <td>${row.profiles?.name || ''}</td>
+          <td><strong>${assignedSeName}</strong></td> <td>${new Date(row.created_at).toLocaleDateString()}</td>
+          <td>${row.status || ''}</td>
+      </tr>`;
+    }).join('');
     
     printWindow.document.write(`
       <html>
@@ -309,8 +380,8 @@ const handleExportFullDataCSV = () => {
           <style>
             body { font-family: sans-serif; padding: 20px; }
             h2 { text-align: center; color: #333; }
-            table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            table { border-collapse: collapse; width: 100%; font-size: 11px; margin-top: 20px; } /* Slightly lower font size to accommodate extra column width safely */
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
             th { background-color: #f4f4f5; color: #333; }
           </style>
         </head>
@@ -321,8 +392,7 @@ const handleExportFullDataCSV = () => {
             <thead>
               <tr>
                 <th>Sr. No.</th><th>Full Name</th><th>Mobile</th><th>Village</th><th>Taluka</th>
-                <th>District</th><th>Onboarded By</th><th>Date Onboarded</th><th>Status</th>
-              </tr>
+                <th>District</th><th>Onboarded By</th><th>Assigned SE</th><th>Date Onboarded</th><th>Status</th> </tr>
             </thead>
             <tbody>${rowsHtml}</tbody>
           </table>
@@ -365,7 +435,6 @@ const handleExportFullDataCSV = () => {
               >
                 <FileSpreadsheet className="h-4 w-4" /> CSV
               </Button>
-              {/* 🚀 NEW Full Data CSV Button */}
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -396,6 +465,7 @@ const handleExportFullDataCSV = () => {
               seOptions={seList} 
               onFilteredDataChange={setFilteredData} 
               canEdit={farmerAccess.can_edit} 
+              villageToRoute={villageToRoute}
             />
           ) : (
             <FarmerMapView 
@@ -410,6 +480,7 @@ const handleExportFullDataCSV = () => {
         open={!!selected} 
         onClose={() => setSelected(null)} 
         canEdit={farmerAccess.can_edit} 
+        
       />
     </AppLayout>
   );
