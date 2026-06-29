@@ -34,12 +34,11 @@ const FarmersPage = ({ onLogout }: Props) => {
   const farmerAccess = getModulePerm('farmers');
 
   const fetchVillageMapping = async () => {
-    console.log("1. 🚀 Starting to fetch village-to-route mappings...");
+    console.log("1. 🚀 Starting to fetch new direct village-to-route mappings...");
+    // 🚀 UPDATED: Query the routes table directly
     const { data, error } = await supabase
-      .from('route_assignments')
-      .select(`
-        routes(name, locations)
-      `);
+      .from('routes')
+      .select('name, locations');
 
     if (error) {
       console.error("❌ Error fetching route mapping:", error.message);
@@ -48,10 +47,9 @@ const FarmersPage = ({ onLogout }: Props) => {
 
     if (data) {
       const mapping: Record<string, string> = {};
-      data.forEach((assignment: any) => {
-        // 🚀 CHANGED: Grab the Route Name instead of SE profile name
-        const routeName = assignment.routes?.name;
-        const locations = assignment.routes?.locations || [];
+      data.forEach((route: any) => {
+        const routeName = route.name;
+        const locations = route.locations || [];
         
         locations.forEach((loc: any) => {
           loc.villages?.forEach((village: string) => {
@@ -60,11 +58,10 @@ const FarmersPage = ({ onLogout }: Props) => {
         });
       });
       
-      console.log("2. ✅ Successfully mapped villages to Routes:", mapping);
+      console.log("2. ✅ Successfully updated direct route mapping map!", mapping);
       setVillageToRoute(mapping);
     }
   };
-
 
   useEffect(() => {
     fetchVillageMapping();

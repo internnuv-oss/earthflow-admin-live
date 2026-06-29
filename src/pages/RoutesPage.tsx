@@ -40,13 +40,17 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
 
   const fetchSEsAndRoutes = async () => {
     setLoading(true);
+    
+    // 🚀 FIXED: Query profiles first to guarantee ALL SEs show up, even with 0 routes
     const { data, error } = await supabase
       .from('profiles')
       .select(`
-        id, name,
-        route_assignments!route_assignments_se_id_fkey(
-          route_id,
-          routes(id, name, locations)
+        id,
+        name,
+        routes!routes_se_id_fkey (
+          id,
+          name,
+          locations
         )
       `)
       .eq('role', 'SE')
@@ -55,15 +59,18 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     if (error) {
       toast({ title: 'Failed to load routes', description: error.message, variant: 'destructive' });
     } else {
+      // 🚀 FORMATTING: Map the data back into your component's exact expected shape
       const formatted = (data || []).map((se: any) => ({
         id: se.id,
         name: se.name,
-        routes: (se.route_assignments || []).map((ra: any) => ra.routes).filter(Boolean)
+        // If they have no routes, this turns into a safe empty array [] instead of crashing
+        routes: se.routes || [] 
       }));
+
       setSeList(formatted);
-      setCurrentPage(1); // 🚀 Reset to page 1 on refresh
+      setCurrentPage(1); // 🚀 Keeps pagination fully working and synchronized
       
-      // Auto-update the sheet if it's currently open
+      // Auto-update the slide-out sheet if it's currently open
       if (selectedSheetSE) {
         const updatedSE = formatted.find((s: any) => s.id === selectedSheetSE.id);
         if (updatedSE) setSelectedSheetSE(updatedSE);
@@ -71,7 +78,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     }
     setLoading(false);
   };
-
+  
   const handleUnassignRoute = async (routeId: string) => {
     if (!confirm('Are you sure you want to remove this route from the SE?')) return;
     
