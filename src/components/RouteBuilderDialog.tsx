@@ -130,25 +130,34 @@ export const RouteBuilderDialog = ({ open, onOpenChange, onSuccess, editData }: 
 
     try {
       if (editData) {
-        const { error: routeError } = await supabase.from('routes').update({ name: routeName.trim(), locations: cleanLocations }).eq('id', editData.id);
+        // 🚀 FIXED: Directly update se_id in the routes table. No more route_assignments!
+        const { error: routeError } = await supabase
+          .from('routes')
+          .update({ 
+            name: routeName.trim(), 
+            locations: cleanLocations,
+            se_id: selectedSe 
+          })
+          .eq('id', editData.id);
+          
         if (routeError) throw routeError;
-
-        if (editData.se_id !== selectedSe) {
-          await supabase.from('route_assignments').delete().match({ route_id: editData.id, se_id: editData.se_id });
-          await supabase.from('route_assignments').insert({ route_id: editData.id, se_id: selectedSe, assigned_by: session?.user?.id });
-        }
         toast({ title: 'Updated!', description: 'Route has been updated successfully.' });
+        
       } else {
-        const { data: routeData, error: routeError } = await supabase.from('routes')
-          .insert({ name: routeName.trim(), locations: cleanLocations, created_by: session?.user?.id }).select('id').single();
+        // 🚀 FIXED: Insert directly into routes table with se_id included.
+        const { error: routeError } = await supabase
+          .from('routes')
+          .insert({ 
+            name: routeName.trim(), 
+            locations: cleanLocations, 
+            se_id: selectedSe,
+            created_by: session?.user?.id 
+          });
+          
         if (routeError) throw routeError;
-
-        const { error: assignError } = await supabase.from('route_assignments')
-          .insert({ route_id: routeData.id, se_id: selectedSe, assigned_by: session?.user?.id });
-        if (assignError) throw assignError;
-
-        toast({ title: 'Success!', description: 'Route created and assigned to SE.' });
+        toast({ title: 'Success!', description: 'Route created and assigned directly to SE.' });
       }
+      
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {
@@ -173,7 +182,6 @@ export const RouteBuilderDialog = ({ open, onOpenChange, onSuccess, editData }: 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/30 p-4 rounded-lg border">
               <div className="space-y-2">
                 <Label>Assigned Sales Executive *</Label>
-                {/* 🚀 SEARCHABLE SE SELECT */}
                 <SearchableSelect 
                   value={selectedSe} 
                   onValueChange={setSelectedSe} 
@@ -326,7 +334,6 @@ const LocationRow = ({ location, index, onUpdate, onRemove, canRemove }: any) =>
           </PopoverTrigger>
           
           <PopoverContent className="w-[300px] p-0" align="start">
-            {/* 🚀 FIX: Prevent scroll trapping by adding onWheel and onTouchMove stops */}
             <div className="max-h-64 overflow-y-auto p-3" onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
               {villages.length === 0 ? (
                 <p className="text-sm text-center text-muted-foreground py-4">No villages found.</p>
