@@ -13,7 +13,8 @@ import SettingsPage from './SettingsPage';
 import SettingsTemplatePage from './SettingsTemplatePage';
 import NotFound from './NotFound';
 import RoutesPage from './RoutesPage';
-
+import AttendancePage from './AttendancePage';
+import ExpensesPage from './ExpensesPage';
 const Index = () => {
   const { session, loading } = useAuth();
   const logout = async () => { await supabase.auth.signOut(); };
@@ -44,6 +45,11 @@ const Index = () => {
       <Route path="/settings/distributor" element={guard(<SettingsTemplatePage type="distributor" onLogout={logout} />)} />
       <Route path="/settings/legacy" element={guard(<SettingsPage onLogout={logout} />)} />
       <Route path="/fpos" element={guard(<FposPage onLogout={logout} />)} />
+      <Route 
+  path="/attendance" 
+  element={guard(<AttendancePage onLogout={logout} />)} 
+/>
+<Route path="/expenses" element={guard(<ExpensesPage onLogout={logout} />)} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

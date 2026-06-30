@@ -10,6 +10,11 @@ import {
   ChevronDown,
   UserCog,
   MapPin,
+  Map, 
+  FileText, 
+  CalendarDays,
+  Clock ,
+  Receipt// 🚀 FIXED: Imported Clock here!
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -18,7 +23,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useAuth } from '@/hooks/useAuth';
-import { usePermissions } from '@/hooks/usePermissions'; // 🚀 IMPORT PERMISSIONS HOOK
+import { usePermissions } from '@/hooks/usePermissions';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true, module: 'dashboard' },
@@ -28,6 +33,9 @@ const navItems = [
   { to: '/farmers', label: 'Farmers', icon: Wheat, module: 'farmers' },
   { to: '/fpos', label: 'FPOs', icon: Sprout, module: 'fpos' },
   { to: '/routes', label: 'Territory Routes', icon: MapPin, module: 'routes' },
+  // 🚀 Your perfectly placed Attendance route
+  { to: '/attendance', label: 'Attendance', icon: Clock, module: 'attendance' }, 
+  { to: '/expenses', label: 'Expenses', icon: Receipt, module: 'expenses' },
 ];
 
 const settingsChildren = [

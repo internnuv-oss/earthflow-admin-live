@@ -60,12 +60,21 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
       toast({ title: 'Failed to load routes', description: error.message, variant: 'destructive' });
     } else {
       // 🚀 FORMATTING: Map the data back into your component's exact expected shape
-      const formatted = (data || []).map((se: any) => ({
-        id: se.id,
-        name: se.name,
-        // If they have no routes, this turns into a safe empty array [] instead of crashing
-        routes: se.routes || [] 
-      }));
+      const formatted = (data || []).map((se: any) => {
+        const rawRoutes = se.routes || [];
+        
+        // 🚀 ALPHANUMERIC (NATURAL) SORT BY ROUTE NAME
+        // This ensures R1, R10, R2 becomes R1, R2, R10
+        const sortedRoutes = [...rawRoutes].sort((a: any, b: any) => 
+          (a.name || '').localeCompare((b.name || ''), undefined, { numeric: true, sensitivity: 'base' })
+        );
+
+        return {
+          id: se.id,
+          name: se.name,
+          routes: sortedRoutes 
+        };
+      });
 
       setSeList(formatted);
       setCurrentPage(1); // 🚀 Keeps pagination fully working and synchronized

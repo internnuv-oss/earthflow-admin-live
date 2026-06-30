@@ -129,34 +129,32 @@ export const RouteBuilderDialog = ({ open, onOpenChange, onSuccess, editData }: 
     const cleanLocations = locations.map(({ state, district, taluka, villages }) => ({ state, district, taluka, villages }));
 
     try {
-      if (editData) {
-        // 🚀 FIXED: Directly update se_id in the routes table. No more route_assignments!
-        const { error: routeError } = await supabase
-          .from('routes')
-          .update({ 
-            name: routeName.trim(), 
-            locations: cleanLocations,
-            se_id: selectedSe 
-          })
-          .eq('id', editData.id);
-          
-        if (routeError) throw routeError;
-        toast({ title: 'Updated!', description: 'Route has been updated successfully.' });
-        
-      } else {
-        // 🚀 FIXED: Insert directly into routes table with se_id included.
-        const { error: routeError } = await supabase
-          .from('routes')
-          .insert({ 
-            name: routeName.trim(), 
-            locations: cleanLocations, 
-            se_id: selectedSe,
-            created_by: session?.user?.id 
-          });
-          
-        if (routeError) throw routeError;
-        toast({ title: 'Success!', description: 'Route created and assigned directly to SE.' });
-      }
+        if (editData) {
+            const { error: routeError } = await supabase
+              .from('routes')
+              .update({ 
+                name: routeName.trim(), 
+                locations: cleanLocations,
+                se_id: selectedSe 
+              } as any) // 🚀 ADD "as any" HERE
+              .eq('id', editData.id);
+              
+            if (routeError) throw routeError;
+            toast({ title: 'Updated!', description: 'Route has been updated successfully.' });
+            
+          } else {
+            const { error: routeError } = await supabase
+              .from('routes')
+              .insert({ 
+                name: routeName.trim(), 
+                locations: cleanLocations, 
+                se_id: selectedSe,
+                created_by: session?.user?.id 
+              } as any); // 🚀 ADD "as any" HERE
+              
+            if (routeError) throw routeError;
+            toast({ title: 'Success!', description: 'Route created and assigned directly to SE.' });
+          }
       
       onSuccess();
       onOpenChange(false);
