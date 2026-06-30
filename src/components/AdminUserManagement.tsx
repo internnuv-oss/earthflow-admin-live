@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PermissionEditor } from './PermissionEditor';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -74,17 +74,24 @@ const AdminUserManagement = () => {
     }
   };
 
-  // 3. Handle Submit (Invoked exactly like SEsPage.tsx)
+  // 3. Handle Submit
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 🚀 FIXED: Run all validation logic immediately before hitting the server
     if (!name.trim() || !mobile.trim() || !password.trim()) {
       toast({ title: 'Validation Error', description: 'Please fill all required fields.', variant: 'destructive' });
       return;
     }
 
+    if (mobile.trim().length !== 10) {
+      toast({ title: 'Validation Error', description: 'Mobile number must be exactly 10 digits.', variant: 'destructive' });
+      return;
+    }
+
     setIsSubmitting(true);
 
-    // 🚀 1. Explicitly grab the current user's active session token
+    // 1. Explicitly grab the current user's active session token
     const { data: { session } } = await supabase.auth.getSession();
 
     // 2. Invoke the function and forcefully pass the Authorization header
@@ -97,7 +104,7 @@ const AdminUserManagement = () => {
         role: role 
       },
       headers: {
-        Authorization: `Bearer ${session?.access_token}` // 🚀 Inject the token here
+        Authorization: `Bearer ${session?.access_token}` // Inject the token here
       }
     });
 
@@ -111,10 +118,6 @@ const AdminUserManagement = () => {
       });
       return;
     }
-    if (mobile.trim().length !== 10) {
-        toast({ title: 'Validation Error', description: 'Mobile number must be exactly 10 digits.', variant: 'destructive' });
-        return;
-      }
       
     toast({
       title: "User Created!",
@@ -130,6 +133,7 @@ const AdminUserManagement = () => {
     setIsModalOpen(false);
     fetchUsers(); 
   };
+
   return (
     <div className="space-y-6">
       {/* Header & Action Button */}
