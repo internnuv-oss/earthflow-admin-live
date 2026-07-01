@@ -43,24 +43,17 @@ export const PermissionEditor = ({ userId, onSave }: { userId: string, onSave: (
   const save = async () => {
     setLoading(true);
     
-    // 🚀 FIX: Safely strip out 'id' if it's undefined or null so Postgres can auto-generate it!
-    const toUpsert = permissions.map(p => {
-      const row: any = {
-        user_id: userId,
-        module_name: p.module_name,
-        can_view: p.can_view,
-        can_edit: p.can_edit
-      };
-      
-      // Only include the id property if it actually exists (for updating existing rows)
-      if (p.id) {
-        row.id = p.id;
-      }
-      
-      return row;
-    });
+    // 🚀 FIXED: Create a perfectly uniform array without any 'id' keys.
+    // Postgres will automatically generate IDs for new rows and use the 
+    // user_id + module_name to update existing ones.
+    const toUpsert = permissions.map(p => ({
+      user_id: userId,
+      module_name: p.module_name,
+      can_view: p.can_view,
+      can_edit: p.can_edit
+    }));
 
-    // 🚀 Explicitly handle the conflict resolution based on unique constraints
+    // 🚀 Supabase handles the matching automatically using our unique constraint
     const { error } = await supabase
       .from('user_permissions')
       .upsert(toUpsert, { onConflict: 'user_id,module_name' });
