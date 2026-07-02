@@ -70,7 +70,8 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
       const endDateStr = toYYYYMMDD(weekDays[6]);
 
       const [profilesRes, shiftsRes] = await Promise.all([
-        supabase.from('profiles').select('id, name').eq('role', 'SE').order('name'),
+        // 🚀 FIXED: Added .eq('is_demo', false) to exclude demo SEs!
+        supabase.from('profiles').select('id, name').eq('role', 'SE').eq('is_demo', false).order('name'),
         supabase.from('shifts')
           .select('*')
           .gte('date', startDateStr)
@@ -121,6 +122,7 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
         .from('profiles')
         .select('id, name')
         .eq('role', 'SE')
+        .eq('is_demo', false)
         .order('name');
       if (pErr) throw pErr;
 

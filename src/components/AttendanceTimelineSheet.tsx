@@ -1,6 +1,6 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LogIn, LogOut, Receipt, ClipboardList, MapPin, Clock, Navigation } from 'lucide-react';
+import { LogIn, LogOut, Receipt, ClipboardList, MapPin, Clock, Navigation, Gauge } from 'lucide-react'; // 🚀 ADDED Gauge Icon
 
 interface Props {
   shift: any | null;
@@ -23,7 +23,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     }
   };
 
-  // 🚀 FIX: Safely parse the location whether it's a string, coordinates, or an address object
   const formatLocation = (loc: any) => {
     if (!loc) return null;
     if (typeof loc === 'string') return loc;
@@ -35,10 +34,21 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     return String(loc);
   };
 
-  // Sort events chronologically safely
   const events = Array.isArray(shift.events) 
     ? [...shift.events].sort((a: any, b: any) => (a.time || 0) - (b.time || 0))
     : [];
+
+  // 🚀 ODOMETER CALCULATOR: Safely parse strings to numbers and calculate distance
+  let odoDistance: string = '--';
+  if (shift.start_km && shift.end_km) {
+    const start = parseFloat(shift.start_km);
+    const end = parseFloat(shift.end_km);
+    if (!isNaN(start) && !isNaN(end)) {
+      odoDistance = `${Math.max(0, end - start).toFixed(1)} km`;
+    }
+  } else if (shift.start_km) {
+    odoDistance = 'In Progress';
+  }
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -51,23 +61,58 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
         </SheetHeader>
 
         <ScrollArea className="flex-1 px-6 py-4">
-          {/* Shift Summary Cards */}
-          <div className="grid grid-cols-2 gap-3 mb-8">
+          {/* 🚀 UPDATED: Shift Summary Cards (Now 3 Columns!) */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="bg-card border rounded-lg p-3 shadow-sm flex flex-col items-center justify-center text-center">
               <Clock className="h-5 w-5 text-muted-foreground mb-1" />
-              <span className="text-xs font-semibold text-muted-foreground uppercase">Duration</span>
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase">Duration</span>
               <span className="text-sm font-bold mt-1">
                 {shift.end_time && shift.start_time
                   ? `${((shift.end_time - shift.start_time) / 3600000).toFixed(1)} hrs` 
-                  : 'Active Shift'}
+                  : 'Active'}
               </span>
             </div>
             <div className="bg-card border rounded-lg p-3 shadow-sm flex flex-col items-center justify-center text-center">
               <Navigation className="h-5 w-5 text-muted-foreground mb-1" />
-              <span className="text-xs font-semibold text-muted-foreground uppercase">Distance</span>
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase">GPS Dist.</span>
               <span className="text-sm font-bold mt-1">{shift.total_distance || 0} km</span>
             </div>
+            {/* 🚀 NEW: Odometer Calculated Distance */}
+            <div className="bg-card border rounded-lg p-3 shadow-sm flex flex-col items-center justify-center text-center">
+              <Gauge className="h-5 w-5 text-muted-foreground mb-1" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase">Odo Dist.</span>
+              <span className="text-sm font-bold mt-1">{odoDistance}</span>
+            </div>
           </div>
+
+          {/* 🚀 NEW: Odometer Photos Section */}
+          {(shift.start_odo_image || shift.end_odo_image) && (
+            <div className="mb-8 bg-muted/20 border rounded-lg p-4">
+              <h4 className="text-sm font-bold mb-3">Vehicle Odometer Readings</h4>
+              <div className="grid grid-cols-2 gap-4">
+                {shift.start_odo_image && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      Start: {shift.start_km ? `${shift.start_km} km` : 'N/A'}
+                    </span>
+                    <a href={shift.start_odo_image} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border shadow-sm hover:opacity-90 transition-opacity">
+                      <img src={shift.start_odo_image} alt="Start Odometer" className="w-full h-24 object-cover" />
+                    </a>
+                  </div>
+                )}
+                {shift.end_odo_image && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      End: {shift.end_km ? `${shift.end_km} km` : 'N/A'}
+                    </span>
+                    <a href={shift.end_odo_image} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border shadow-sm hover:opacity-90 transition-opacity">
+                      <img src={shift.end_odo_image} alt="End Odometer" className="w-full h-24 object-cover" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Timeline */}
           <div className="space-y-0 relative">
@@ -107,7 +152,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                           {item.description}
                         </p>
                       )}
-                      {/* 🚀 Render the formatted, React-safe location */}
                       {safeLocation && (
                         <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
                           <MapPin className="h-3 w-3 shrink-0" /> 

@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { DataTable, DataTableColumn } from './DataTable';
-import { Button } from '@/components/ui/button'; // 🚀 Added Button import
-import { Mail, Phone, User, Edit2, Eye } from 'lucide-react'; // 🚀 Added Edit2 & Eye icons
+import { Button } from '@/components/ui/button'; 
+import { Mail, Phone, User, Edit2, Eye } from 'lucide-react'; 
+import { Switch } from '@/components/ui/switch'; 
 
 export interface SERow {
   id: string;
@@ -11,24 +12,18 @@ export interface SERow {
   email: string | null;
   role: string;
   created_at: string;
-  sales_executive?: {
-    is_profile_complete?: boolean;
-    personal_details?: any;
-    organization_details?: any;
-    financial_details?: any;
-    assets_details?: any;
-    documents?: any;
-  } | null;
+  is_demo?: boolean; 
+  sales_executive?: any;
 }
 
 interface Props {
   rows: SERow[];
   onSelect: (row: SERow) => void;
-  canEdit: boolean; // 🚀 Added dynamic edit permission prop
+  canEdit: boolean; 
+  onToggleDemo: (id: string, currentStatus: boolean) => void; 
 }
 
-const SETable = ({ rows, onSelect, canEdit }: Props) => {
-  // Wrap columns in useMemo so it correctly re-renders when the canEdit permission status changes
+const SETable = ({ rows, onSelect, canEdit, onToggleDemo }: Props) => {
   const columns: DataTableColumn<SERow>[] = useMemo(() => [
     {
       key: 'name', header: 'Name', sortable: true, sortValue: r => (r?.name || '').toLowerCase(),
@@ -37,7 +32,10 @@ const SETable = ({ rows, onSelect, canEdit }: Props) => {
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-primary">
             <User className="h-4 w-4" />
           </div>
-          <span className="font-medium">{r?.name || 'Unnamed'}</span>
+          <div>
+            <div className="font-medium">{r?.name || 'Unnamed'}</div>
+            {r?.is_demo && <Badge variant="outline" className="text-[10px] h-4 px-1 bg-amber-50 text-amber-600 border-amber-200 mt-0.5">Demo Account</Badge>}
+          </div>
         </div>
       ),
     },
@@ -47,11 +45,25 @@ const SETable = ({ rows, onSelect, canEdit }: Props) => {
         <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{r.mobile}</span>
       ) : <span className="text-muted-foreground">—</span>,
     },
+    // 🚀 RESTORED: Email Column
     {
       key: 'email', header: 'Email',
       accessor: r => r?.email ? (
         <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{r.email}</span>
       ) : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: 'is_demo', header: 'Demo SE?', className: 'text-center', headerClassName: 'font-semibold text-center',
+      accessor: r => (
+        // 🚀 FIXED: e.stopPropagation() prevents the click from opening the row!
+        <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+          <Switch 
+            checked={!!r.is_demo} 
+            onCheckedChange={() => onToggleDemo(r.id, !!r.is_demo)}
+            disabled={!canEdit}
+          />
+        </div>
+      ),
     },
     {
       key: 'complete', header: 'Profile Status', className: 'text-center', headerClassName: 'font-semibold text-center',
@@ -61,6 +73,7 @@ const SETable = ({ rows, onSelect, canEdit }: Props) => {
       },
       sortable: true, sortValue: r => (r?.sales_executive?.is_profile_complete ? 1 : 0),
     },
+    // 🚀 RESTORED: Joined Date Column
     {
       key: 'created_at', header: 'Joined', sortable: true,
       sortValue: r => r?.created_at ? new Date(r.created_at).getTime() : 0,
@@ -78,7 +91,7 @@ const SETable = ({ rows, onSelect, canEdit }: Props) => {
         </Button>
       )
     }
-  ], [canEdit, onSelect]);
+  ], [canEdit, onSelect, onToggleDemo]);
 
   return (
     <DataTable

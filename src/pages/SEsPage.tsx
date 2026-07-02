@@ -43,7 +43,8 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, mobile, email, role, created_at, sales_executive(is_profile_complete, personal_details, organization_details, financial_details, assets_details, documents)')
+        // 🚀 INCLUDED is_demo IN THE SELECT QUERY
+        .select('id, name, mobile, email, role, created_at, is_demo, sales_executive(is_profile_complete, personal_details, organization_details, financial_details, assets_details, documents)')
         .eq('role', 'SE')
         .order('created_at', { ascending: false });
       
@@ -100,26 +101,23 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
     
     setSaving(true);
 
-    // 🚀 Grab the session to bypass the "Missing authorization header" error
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Combine first and last name
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     
-    // Invoke the secure Edge Function
     const { data, error } = await supabase.functions.invoke('create-se', {
       body: {
-        name: fullName,       // 🚀 FIX 1: Send 'name' instead of 'firstName'
+        name: fullName,
         mobile: mobile.trim(),
         email: email.trim(),
         password: password,
-        role: 'SE'            // 🚀 FIX 2: Explicitly tell the Edge Function this is an 'SE'
+        role: 'SE'
       },
       headers: {
-        Authorization: `Bearer ${session?.access_token}` // 🚀 FIX 3: Inject Auth Header
+        Authorization: `Bearer ${session?.access_token}`
       }
     });
-
+    
     setSaving(false);
     
     if (error || data?.error) {
@@ -129,10 +127,34 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
 
     toast({ title: 'Sales Executive created', description: 'They can now log into the mobile app.' });
     
-    // Reset form
     setFirstName(''); setLastName(''); setDob(''); setMobile(''); setEmail(''); setPassword('');
     setOpen(false);
     load();
+  };
+
+  // 🚀 NEW: Function to handle toggling the Demo status directly in the DB
+  const handleToggleDemo = async (id: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    
+    // Optimistic UI update for instant feedback
+    setRows(prev => prev.map(r => r.id === id ? { ...r, is_demo: newStatus } : r));
+    
+    // Update Database
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_demo: newStatus })
+      .eq('id', id);
+      
+    if (error) {
+      toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
+      // Revert on fail
+      setRows(prev => prev.map(r => r.id === id ? { ...r, is_demo: currentStatus } : r));
+    } else {
+      toast({ 
+        title: newStatus ? 'Marked as Demo' : 'Marked as Real SE', 
+        description: 'Your reports will update automatically.' 
+      });
+    }
   };
 
   return (
@@ -145,7 +167,6 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
           </p>
         </div>
 
-        {/* HIDDEN / SHOWN DYNAMICALLY DEPENDING ON EDIT PERMISSION */}
         {seAccess.can_edit && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -209,6 +230,7 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
             rows={rows} 
             onSelect={setSelected} 
             canEdit={seAccess.can_edit} 
+            onToggleDemo={handleToggleDemo} // 🚀 PASSED DOWN TO TABLE
           />
         )}
       </div>

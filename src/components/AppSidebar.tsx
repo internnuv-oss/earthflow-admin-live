@@ -36,6 +36,8 @@ const navItems = [
   // 🚀 Your perfectly placed Attendance route
   { to: '/attendance', label: 'Attendance', icon: Clock, module: 'attendance' }, 
   { to: '/expenses', label: 'Expenses', icon: Receipt, module: 'expenses' },
+  { to: '/locations', label: 'Location Master', icon: Map, module: 'locations' },
+  
 ];
 
 const settingsChildren = [

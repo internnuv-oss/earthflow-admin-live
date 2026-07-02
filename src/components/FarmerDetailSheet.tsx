@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileText, Edit, Save, X, Loader2, Plus, Trash2, Check, ChevronsUpDown } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -128,7 +127,6 @@ interface Props {
   onClose: () => void;
   onSaved?: () => void;
   canEdit: boolean;
-  
 }
 
 const safeArray = (val: any): string[] => {
@@ -137,29 +135,24 @@ const safeArray = (val: any): string[] => {
   return [];
 };
 
-const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props) => {
+const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props) => {
   const { session } = useAuth();
   const userId = session?.user?.id;
   const { getModulePerm } = usePermissions(userId || '');
   
-  // This evaluates to true or false
   const hasEditAccess = getModulePerm('farmers').can_edit;
   const { toast } = useToast();
-  const { role } = useAuth();
  
   // --- EDIT STATE ---
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  // Top Level
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
   const [village, setVillage] = useState('');
   
-  // Personal Details
   const [pd, setPd] = useState({ fatherName: '', alternateMobile: '', state: '', city: '', taluka: '', pincode: '' });
   
-  // Farm Details
   const [fd, setFd] = useState({
     totalLand: '', landUnit: 'Acres', irrigatedLand: '', rainFedLand: '',
     majorCrops: [] as string[], soilType: [] as string[], otherSoilType: '', 
@@ -168,44 +161,50 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
     biofertilizer: '', isIntercropping: ''
   });
   
-  // Arrays
   const [sideTrees, setSideTrees] = useState<{type: string, quantity: string}[]>([]);
   const [cattles, setCattles] = useState<{type: string, quantity: string}[]>([]);
   const [pastCrops, setPastCrops] = useState<{cropName: string, area: string, areaUnit: string, inputUsed: string[], otherInputUsed: string, yield: string, yieldUnit: string, problemsFaced: string}[]>([]);
 
-  // Cascading Location Cascade States
-  const [stateData, setStateData] = useState<any>(null);
-  const [cities, setCities] = useState<string[]>([]);
-  const [talukas, setTalukas] = useState<string[]>([]);
-  const [loadingLoc, setLoadingLoc] = useState(false);
+  // 🚀 NEW: Supabase Database States for Cascading Locations
+  const [dbDistricts, setDbDistricts] = useState<any[]>([]);
+  const [dbTalukas, setDbTalukas] = useState<any[]>([]);
+  const [dbVillages, setDbVillages] = useState<any[]>([]);
 
-  // Load cascading datasets based on chosen State
+  // 1. Fetch ALL Districts when editing begins
   useEffect(() => {
-    if (!pd.state || !isEditing) { setStateData(null); setCities([]); return; }
-    const fetchStateData = async () => {
-      setLoadingLoc(true);
-      try {
-        const res = await fetch(`https://raw.githubusercontent.com/internnuv-oss/indian-cities-and-villages/master/By%20States/${encodeURIComponent(pd.state)}.json`);
-        if (!res.ok) throw new Error("State location catalog not found.");
-        setStateData(await res.json());
-      } catch (e) {
-        setCities([]); setStateData(null);
-      } finally { setLoadingLoc(false); }
+    if (!isEditing) return;
+    const fetchDistricts = async () => {
+      const { data } = await supabase.from('districts').select('*').order('name');
+      if (data) setDbDistricts(data);
     };
-    fetchStateData();
-  }, [pd.state, isEditing]);
+    fetchDistricts();
+  }, [isEditing]);
 
+  // 2. Fetch Talukas when District (pd.city) changes
   useEffect(() => {
-    if (!stateData || !stateData.districts) return setCities([]);
-    setCities(stateData.districts.map((d: any) => d.district).sort());
-  }, [stateData]);
+    if (!isEditing || !pd.city) { setDbTalukas([]); return; }
+    const selectedDistrict = dbDistricts.find(d => d.name === pd.city);
+    if (!selectedDistrict) { setDbTalukas([]); return; }
 
+    const fetchTalukas = async () => {
+      const { data } = await supabase.from('talukas').select('*').eq('district_id', selectedDistrict.id).order('name');
+      if (data) setDbTalukas(data);
+    };
+    fetchTalukas();
+  }, [pd.city, dbDistricts, isEditing]);
+
+  // 3. Fetch Villages when Taluka changes
   useEffect(() => {
-    if (!pd.city || !stateData || !stateData.districts) return setTalukas([]);
-    const dist = stateData.districts.find((d: any) => d.district === pd.city);
-    if (dist && dist.subDistricts) setTalukas(dist.subDistricts.map((sd: any) => sd.subDistrict).sort());
-    else setTalukas([]);
-  }, [pd.city, stateData]);
+    if (!isEditing || !pd.taluka) { setDbVillages([]); return; }
+    const selectedTaluka = dbTalukas.find(t => t.name === pd.taluka);
+    if (!selectedTaluka) { setDbVillages([]); return; }
+
+    const fetchVillages = async () => {
+      const { data } = await supabase.from('villages').select('*').eq('taluka_id', selectedTaluka.id).order('name');
+      if (data) setDbVillages(data);
+    };
+    fetchVillages();
+  }, [pd.taluka, dbTalukas, isEditing]);
 
   // Load Data
   useEffect(() => {
@@ -241,10 +240,7 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
       
       const history = f.history_details || {};
       const crops = Array.isArray(history.pastCrops) ? history.pastCrops : [];
-      setPastCrops(crops.map(c => ({
-        ...c,
-        inputUsed: safeArray(c.inputUsed)
-      })));
+      setPastCrops(crops.map(c => ({ ...c, inputUsed: safeArray(c.inputUsed) })));
     }
   }, [f, open, isEditing]);
 
@@ -290,13 +286,7 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
     const update_history = [...(f.update_history || []), historyEntry];
 
     if (f.status === 'DRAFT') {
-      const draft_data = {
-        fullName, mobile, village,
-        ...pd,
-        ...fd,
-        sideTrees, cattles,
-        pastCrops
-      };
+      const draft_data = { fullName, mobile, village, ...pd, ...fd, sideTrees, cattles, pastCrops };
 
       const { error } = await (supabase as any)
         .from('drafts')
@@ -315,13 +305,8 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
     const { error } = await (supabase as any)
       .from('farmers')
       .update({
-        full_name: fullName, 
-        mobile, 
-        village,
-        personal_details, 
-        farm_details, 
-        history_details,
-        update_history
+        full_name: fullName, mobile, village,
+        personal_details, farm_details, history_details, update_history
       })
       .eq('id', f.id);
 
@@ -337,7 +322,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
     }
   };
 
-  // State Updaters
   const updatePd = (k: string, v: string) => setPd(p => ({ ...p, [k]: v }));
   const updateFd = (k: string, v: any) => setFd(p => ({ ...p, [k]: v }));
   const updateArr = (setter: any, idx: number, key: string, val: any) => setter((prev: any) => prev.map((item: any, i: number) => i === idx ? { ...item, [key]: val } : item));
@@ -345,7 +329,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
 
   if (!f) return null;
 
-  // View Mode Variables
   const farmData = f?.farm_details || {};
   const farmRest: Record<string, unknown> = {};
   const arrayFields: Array<[string, any[]]> = [];
@@ -370,13 +353,8 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
           <div className="flex items-start justify-between gap-4">
             
             <div className="min-w-0 flex-1">
-              {/* ALWAYS IN DOM, BUT SCREEN-READER ONLY IF EDITING */}
-              <SheetTitle className={cn("text-xl truncate", isEditing && "sr-only")}>
-                {f?.full_name || 'Farmer'}
-              </SheetTitle>
-              <SheetDescription className="sr-only">
-                Farmer configuration panel.
-              </SheetDescription> 
+              <SheetTitle className={cn("text-xl truncate", isEditing && "sr-only")}>{f?.full_name || 'Farmer'}</SheetTitle>
+              <SheetDescription className="sr-only">Farmer configuration panel.</SheetDescription> 
 
               {isEditing && (
                 <div className="space-y-1 mb-2">
@@ -389,7 +367,16 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                 {isEditing ? (
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-foreground">Village *:</span>
-                    <Input value={village} onChange={e => setVillage(e.target.value)} className="h-7 w-32 text-xs" />
+                    {/* 🚀 UPGRADED: Village is now a cascading Searchable Dropdown! */}
+                    <div className="w-48">
+                      <SearchableSingleSelect 
+                        label="Village" 
+                        options={dbVillages.map(v => v.name)} 
+                        value={village} 
+                        onChange={setVillage} 
+                        placeholder="Select Village" 
+                      />
+                    </div>
                   </div>
                 ) : (
                   <span>{f?.village || 'No village'}</span>
@@ -400,7 +387,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
 
             <div className="flex flex-col items-end gap-2 shrink-0">
               <Badge>{f?.status || 'DRAFT'}</Badge>
-
               <div className="flex gap-2 justify-end mt-4">
                 {isEditing ? (
                   <>
@@ -416,9 +402,9 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                     <Edit className="h-3.5 w-3.5" /> Edit
                   </Button>
                 )}
+              </div>
             </div>
           </div>
-</div>
           {!isEditing && f?.pdf_url && (
             <Button asChild size="sm" variant="secondary" className="self-start gap-2">
               <a href={f.pdf_url} target="_blank" rel="noreferrer"><FileText className="h-4 w-4" /> View PDF Dossier</a>
@@ -447,15 +433,31 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                       
                       <div className="space-y-1.5">
                         <Label>State *</Label>
-                        <SearchableSingleSelect label="State" options={INDIAN_STATES} value={pd.state} onChange={v => { setPd(p => ({ ...p, state: v, city: '', taluka: '' })); }} placeholder="Select State" />
+                        <SearchableSingleSelect label="State" options={INDIAN_STATES} value={pd.state} onChange={v => setPd(p => ({ ...p, state: v }))} placeholder="Select State" />
                       </div>
+                      
+                      {/* 🚀 UPGRADED: District now pulls directly from Supabase */}
                       <div className="space-y-1.5">
-                        <Label>{loadingLoc ? "District (Loading...) *" : "District *"}</Label>
-                        <SearchableSingleSelect label="District" options={cities} value={pd.city} onChange={v => { setPd(p => ({ ...p, city: v, taluka: '' })); }} placeholder="Select District" />
+                        <Label>District *</Label>
+                        <SearchableSingleSelect 
+                          label="District" 
+                          options={dbDistricts.map(d => d.name)} 
+                          value={pd.city} 
+                          onChange={v => { updatePd('city', v); updatePd('taluka', ''); setVillage(''); }} 
+                          placeholder="Select District" 
+                        />
                       </div>
+                      
+                      {/* 🚀 UPGRADED: Taluka now pulls directly from Supabase */}
                       <div className="space-y-1.5">
                         <Label>Taluka *</Label>
-                        <SearchableSingleSelect label="Taluka" options={talukas} value={pd.taluka} onChange={v => updatePd('taluka', v)} placeholder="Select Taluka" />
+                        <SearchableSingleSelect 
+                          label="Taluka" 
+                          options={dbTalukas.map(t => t.name)} 
+                          value={pd.taluka} 
+                          onChange={v => { updatePd('taluka', v); setVillage(''); }} 
+                          placeholder="Select Taluka" 
+                        />
                       </div>
 
                       <div className="space-y-1.5"><Label>Pincode</Label><Input value={pd.pincode} maxLength={6} type="tel" onChange={e => updatePd('pincode', e.target.value)} /></div>
@@ -499,13 +501,11 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                           </Select>
                         </div>
 
-                        {/* SEARCHABLE MULTI-SELECT 1: MAJOR CROPS */}
                         <div className="space-y-1.5 flex flex-col">
                           <Label className="font-semibold">Major Crops *</Label>
                           <SearchableMultiSelect label="Crops" options={WEST_INDIA_CROPS} selected={fd.majorCrops} onChange={v => updateFd('majorCrops', v)} />
                         </div>
 
-                        {/* SEARCHABLE MULTI-SELECT 2: SOIL TYPES */}
                         <div className="space-y-1.5 flex flex-col">
                           <Label className="font-semibold">Soil Type *</Label>
                           <SearchableMultiSelect label="Soil" options={SOIL_TYPES} selected={fd.soilType} onChange={v => updateFd('soilType', v)} />
@@ -514,7 +514,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                           <div className="space-y-1.5 sm:col-span-2"><Label>Specify Other Soil Type *</Label><Input value={fd.otherSoilType} onChange={e => updateFd('otherSoilType', e.target.value)} /></div>
                         )}
 
-                        {/* SEARCHABLE MULTI-SELECT 3: WATER SOURCES */}
                         <div className="space-y-1.5 flex flex-col">
                           <Label className="font-semibold">Water Source *</Label>
                           <SearchableMultiSelect label="Source" options={WATER_SOURCES} selected={fd.waterSource} onChange={v => updateFd('waterSource', v)} />
@@ -523,13 +522,11 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                           <div className="space-y-1.5 sm:col-span-2"><Label>Specify Other Water Source *</Label><Input value={fd.otherWaterSource} onChange={e => updateFd('otherWaterSource', e.target.value)} /></div>
                         )}
 
-                        {/* SEARCHABLE MULTI-SELECT 4: IRRIGATION TYPES */}
                         <div className="space-y-1.5 flex flex-col">
                           <Label className="font-semibold">Irrigation Types</Label>
                           <SearchableMultiSelect label="Type" options={IRRIGATION_TYPES} selected={fd.irrigationType} onChange={v => updateFd('irrigationType', v)} />
                         </div>
 
-                        {/* SEARCHABLE MULTI-SELECT 5: FARM EQUIPMENTS */}
                         <div className="space-y-1.5 flex flex-col sm:col-span-2">
                           <Label className="font-semibold">Farm Equipments</Label>
                           <SearchableMultiSelect label="Equipment" options={FARM_EQUIPMENTS} selected={fd.farmEquipments} onChange={v => updateFd('farmEquipments', v)} />
@@ -552,7 +549,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                   )}
                 </Section>
                 
-                {/* Section: Side Trees */}
                 <Section title="Side Trees">
                   {isEditing ? (
                     <div className="space-y-2">
@@ -573,7 +569,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                   )}
                 </Section>
 
-                {/* Section: Livestock */}
                 <Section title="Cattles / Livestock">
                   {isEditing ? (
                     <div className="space-y-2">
@@ -632,7 +627,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved , canEdit}: Props
                               </Select>
                             </div>
                             
-                            {/* SEARCHABLE MULTI-SELECT FOR INPUTS USED INSIDE HISTORY ARRAY */}
                             <div className="space-y-1 flex flex-col col-span-2">
                               <Label className="text-[10px] font-semibold">Inputs Used</Label>
                               <SearchableMultiSelect label="Inputs" options={INPUTS_USED} selected={crop.inputUsed} onChange={v => updateArr(setPastCrops, i, 'inputUsed', v)} />

@@ -36,7 +36,9 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
   // 1. Fetch SE List (Only once on mount)
   useEffect(() => {
     if (!userId || !expenseAccess.can_view) return;
-    supabase.from('profiles').select('id, name').eq('role', 'SE').order('name')
+    
+    // 🚀 FIXED: Added .eq('is_demo', false) to only load real SEs into the filter
+    supabase.from('profiles').select('id, name').eq('role', 'SE').eq('is_demo', false).order('name')
       .then(({ data }) => { if (data) setSeList(data); });
   }, [userId, expenseAccess.can_view]);
 
@@ -75,6 +77,10 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
 
   // 🚀 Apply local filters (SE and Status)
   const filteredData = expenses.filter((exp) => {
+    // 🚀 STRICT FILTER: Permanently hide expenses if the SE is not in our clean list (meaning they are a Demo)
+    const isRealSE = seList.some(se => se.id === exp.se_id);
+    if (!isRealSE) return false;
+
     const matchesSE = selectedSE === 'All' || exp.se_id === selectedSE;
     const matchesStatus = statusFilter === 'All' || exp.status === statusFilter;
     return matchesSE && matchesStatus;
@@ -103,7 +109,12 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     const headers = ['Date', 'Executive Name', 'Category', 'Amount (INR)', 'Status', 'Remarks'];
     const csvRows = [headers.join(',')];
     
-    filteredData.forEach(exp => {
+    // 🚀 STRICT FILTER: Only export the expense if the SE exists in our clean seList!
+    const cleanDataToExport = filteredData.filter(exp => 
+      seList.some(se => se.id === exp.se_id)
+    );
+
+    cleanDataToExport.forEach(exp => {
       const row = [
         `"${new Date(exp.date).toLocaleDateString()}"`,
         `"${exp.profiles?.name || 'Unknown'}"`,
@@ -126,7 +137,6 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     link.click();
     window.URL.revokeObjectURL(url);
   };
-
   if (authLoading || permLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   if (!expenseAccess.can_view) {

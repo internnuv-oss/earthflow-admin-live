@@ -246,6 +246,24 @@ export type Database = {
           },
         ]
       }
+      districts: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       drafts: {
         Row: {
           created_at: string | null
@@ -539,6 +557,7 @@ export type Database = {
           created_at: string | null
           email: string | null
           id: string
+          is_demo: boolean | null
           mobile: string
           name: string
           role: string
@@ -547,6 +566,7 @@ export type Database = {
           created_at?: string | null
           email?: string | null
           id: string
+          is_demo?: boolean | null
           mobile: string
           name: string
           role: string
@@ -555,57 +575,12 @@ export type Database = {
           created_at?: string | null
           email?: string | null
           id?: string
+          is_demo?: boolean | null
           mobile?: string
           name?: string
           role?: string
         }
         Relationships: []
-      }
-      route_assignments: {
-        Row: {
-          assigned_at: string | null
-          assigned_by: string | null
-          id: string
-          route_id: string
-          se_id: string
-        }
-        Insert: {
-          assigned_at?: string | null
-          assigned_by?: string | null
-          id?: string
-          route_id: string
-          se_id: string
-        }
-        Update: {
-          assigned_at?: string | null
-          assigned_by?: string | null
-          id?: string
-          route_id?: string
-          se_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "route_assignments_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "route_assignments_route_id_fkey"
-            columns: ["route_id"]
-            isOneToOne: false
-            referencedRelation: "routes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "route_assignments_se_id_fkey"
-            columns: ["se_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       routes: {
         Row: {
@@ -614,6 +589,7 @@ export type Database = {
           id: string
           locations: Json
           name: string
+          se_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -622,6 +598,7 @@ export type Database = {
           id?: string
           locations?: Json
           name: string
+          se_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -630,12 +607,20 @@ export type Database = {
           id?: string
           locations?: Json
           name?: string
+          se_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "routes_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routes_se_id_fkey"
+            columns: ["se_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -686,9 +671,54 @@ export type Database = {
           },
         ]
       }
+      shift_locations: {
+        Row: {
+          accuracy: number | null
+          created_at: string | null
+          heading: number | null
+          id: string
+          lat: number
+          lng: number
+          shift_id: string
+          speed: number | null
+          timestamp: number
+        }
+        Insert: {
+          accuracy?: number | null
+          created_at?: string | null
+          heading?: number | null
+          id?: string
+          lat: number
+          lng: number
+          shift_id: string
+          speed?: number | null
+          timestamp: number
+        }
+        Update: {
+          accuracy?: number | null
+          created_at?: string | null
+          heading?: number | null
+          id?: string
+          lat?: number
+          lng?: number
+          shift_id?: string
+          speed?: number | null
+          timestamp?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_locations_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shifts: {
         Row: {
           activities_logged: number | null
+          allowance_status: string | null
           created_at: string | null
           date: string
           end_km: string | null
@@ -712,6 +742,7 @@ export type Database = {
         }
         Insert: {
           activities_logged?: number | null
+          allowance_status?: string | null
           created_at?: string | null
           date?: string
           end_km?: string | null
@@ -735,6 +766,7 @@ export type Database = {
         }
         Update: {
           activities_logged?: number | null
+          allowance_status?: string | null
           created_at?: string | null
           date?: string
           end_km?: string | null
@@ -762,6 +794,35 @@ export type Database = {
             columns: ["se_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      talukas: {
+        Row: {
+          created_at: string | null
+          district_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          district_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          district_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "talukas_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
             referencedColumns: ["id"]
           },
         ]
@@ -794,6 +855,35 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      villages: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          taluka_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          taluka_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          taluka_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "villages_taluka_id_fkey"
+            columns: ["taluka_id"]
+            isOneToOne: false
+            referencedRelation: "talukas"
             referencedColumns: ["id"]
           },
         ]

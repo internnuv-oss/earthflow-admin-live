@@ -13,7 +13,7 @@ import { Loader2, MapPin, X, Plus, ChevronDown, Search } from 'lucide-react';
 
 const INDIAN_STATES = [ "Gujarat", "Maharashtra", "Rajasthan", "Madhya Pradesh", "Karnataka", "Punjab", "Haryana" ].sort();
 
-// 🚀 NEW: Custom Searchable Select Component
+// Searchable Select Component
 const SearchableSelect = ({ value, onValueChange, options, placeholder, disabled }: any) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -38,7 +38,6 @@ const SearchableSelect = ({ value, onValueChange, options, placeholder, disabled
             className="flex-1 border-0 bg-transparent py-3 focus-visible:ring-0 px-0 h-9" 
           />
         </div>
-        {/* 🚀 FIX: Prevent scroll trapping */}
         <div className="max-h-64 overflow-y-auto p-1" onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
           {filtered.length === 0 ? (
             <p className="p-4 text-center text-sm text-muted-foreground">No results found.</p>
@@ -136,7 +135,7 @@ export const RouteBuilderDialog = ({ open, onOpenChange, onSuccess, editData }: 
                 name: routeName.trim(), 
                 locations: cleanLocations,
                 se_id: selectedSe 
-              } as any) // 🚀 ADD "as any" HERE
+              } as any)
               .eq('id', editData.id);
               
             if (routeError) throw routeError;
@@ -150,7 +149,7 @@ export const RouteBuilderDialog = ({ open, onOpenChange, onSuccess, editData }: 
                 locations: cleanLocations, 
                 se_id: selectedSe,
                 created_by: session?.user?.id 
-              } as any); // 🚀 ADD "as any" HERE
+              } as any);
               
             if (routeError) throw routeError;
             toast({ title: 'Success!', description: 'Route created and assigned directly to SE.' });
@@ -222,48 +221,52 @@ export const RouteBuilderDialog = ({ open, onOpenChange, onSuccess, editData }: 
 };
 
 // ==========================================
-// CASCADING LOCATION ROW COMPONENT
+// 🚀 MIGRATED CASCADING LOCATION ROW COMPONENT
 // ==========================================
 const LocationRow = ({ location, index, onUpdate, onRemove, canRemove }: any) => {
-  const [stateData, setStateData] = useState<any>(null);
-  const [districts, setDistricts] = useState<string[]>([]);
-  const [talukas, setTalukas] = useState<string[]>([]);
-  const [villages, setVillages] = useState<string[]>([]);
+  const [dbDistricts, setDbDistricts] = useState<any[]>([]);
+  const [dbTalukas, setDbTalukas] = useState<any[]>([]);
+  const [dbVillages, setDbVillages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // 1. Fetch all districts from Supabase on mount
   useEffect(() => {
-    if (!location.state) { setStateData(null); setDistricts([]); return; }
-    const fetchStateData = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`https://raw.githubusercontent.com/internnuv-oss/indian-cities-and-villages/master/By%20States/${encodeURIComponent(location.state)}.json`);
-        if (res.ok) setStateData(await res.json());
-      } catch (e) { console.error(e); } finally { setLoading(false); }
-    };
-    fetchStateData();
-  }, [location.state]);
+    setLoading(true);
+    supabase.from('districts').select('*').order('name')
+      .then(({ data }) => {
+        if (data) setDbDistricts(data);
+        setLoading(false);
+      });
+  }, []);
 
+  // 2. Fetch Talukas when District name selection changes
   useEffect(() => {
-    if (stateData?.districts) setDistricts(stateData.districts.map((d: any) => d.district).sort());
-  }, [stateData]);
+    if (!location.district) { setDbTalukas([]); return; }
+    const match = dbDistricts.find(d => d.name === location.district);
+    if (!match) return;
 
+    supabase.from('talukas').select('*').eq('district_id', match.id).order('name')
+      .then(({ data }) => {
+        if (data) setDbTalukas(data);
+      });
+  }, [location.district, dbDistricts]);
+
+  // 3. Fetch Villages when Taluka name selection changes
   useEffect(() => {
-    if (!location.district || !stateData?.districts) return setTalukas([]);
-    const dist = stateData.districts.find((d: any) => d.district === location.district);
-    if (dist?.subDistricts) setTalukas(dist.subDistricts.map((sd: any) => sd.subDistrict).sort());
-  }, [location.district, stateData]);
+    if (!location.taluka) { setDbVillages([]); return; }
+    const match = dbTalukas.find(t => t.name === location.taluka);
+    if (!match) return;
 
-  useEffect(() => {
-    if (!location.taluka || !location.district || !stateData?.districts) return setVillages([]);
-    const dist = stateData.districts.find((d: any) => d.district === location.district);
-    const sub = dist?.subDistricts?.find((sd: any) => sd.subDistrict === location.taluka);
-    if (sub?.villages) setVillages([...sub.villages].sort());
-  }, [location.taluka, location.district, stateData]);
+    supabase.from('villages').select('*').eq('taluka_id', match.id).order('name')
+      .then(({ data }) => {
+        if (data) setDbVillages(data);
+      });
+  }, [location.taluka, dbTalukas]);
 
-  const toggleVillage = (village: string) => {
+  const toggleVillage = (vName: string) => {
     const current = new Set(location.villages);
-    if (current.has(village)) current.delete(village);
-    else current.add(village);
+    if (current.has(vName)) current.delete(vName);
+    else current.add(vName);
     onUpdate('villages', Array.from(current));
   };
 
@@ -296,7 +299,7 @@ const LocationRow = ({ location, index, onUpdate, onRemove, canRemove }: any) =>
           <SearchableSelect 
             value={location.district} 
             onValueChange={(val: any) => onUpdate('district', val)} 
-            options={districts.map(d => ({ value: d, label: d }))} 
+            options={dbDistricts.map(d => ({ value: d.name, label: d.name }))} 
             placeholder="Search District" 
             disabled={!location.state || loading}
           />
@@ -307,7 +310,7 @@ const LocationRow = ({ location, index, onUpdate, onRemove, canRemove }: any) =>
           <SearchableSelect 
             value={location.taluka} 
             onValueChange={(val: any) => onUpdate('taluka', val)} 
-            options={talukas.map(t => ({ value: t, label: t }))} 
+            options={dbTalukas.map(t => ({ value: t.name, label: t.name }))} 
             placeholder="Search Taluka" 
             disabled={!location.district}
           />
@@ -333,19 +336,22 @@ const LocationRow = ({ location, index, onUpdate, onRemove, canRemove }: any) =>
           
           <PopoverContent className="w-[300px] p-0" align="start">
             <div className="max-h-64 overflow-y-auto p-3" onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
-              {villages.length === 0 ? (
+              {dbVillages.length === 0 ? (
                 <p className="text-sm text-center text-muted-foreground py-4">No villages found.</p>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2 pb-2 border-b sticky top-0 bg-popover z-10">
-                    <Checkbox checked={location.villages.length === villages.length} onCheckedChange={(checked) => onUpdate('villages', checked ? [...villages] : [])} />
-                    <Label className="text-sm font-semibold">Select All ({villages.length})</Label>
+                    <Checkbox 
+                      checked={location.villages.length === dbVillages.length} 
+                      onCheckedChange={(checked) => onUpdate('villages', checked ? dbVillages.map(v => v.name) : [])} 
+                    />
+                    <Label className="text-sm font-semibold">Select All ({dbVillages.length})</Label>
                   </div>
-                  {villages.map((v) => (
-                    <div key={v} className="flex items-center space-x-2 cursor-pointer" onClick={() => toggleVillage(v)}>
-                      <Checkbox checked={location.villages.includes(v)} onCheckedChange={() => toggleVillage(v)} />
+                  {dbVillages.map((v) => (
+                    <div key={v.id} className="flex items-center space-x-2 cursor-pointer" onClick={() => toggleVillage(v.name)}>
+                      <Checkbox checked={location.villages.includes(v.name)} onCheckedChange={() => toggleVillage(v.name)} />
                       <Label className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        {v}
+                        {v.name}
                       </Label>
                     </div>
                   ))}
