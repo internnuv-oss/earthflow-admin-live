@@ -4,87 +4,119 @@ import AppLayout from '@/components/AppLayout';
 import { ExpenseActionSheet } from '@/components/ExpenseActionSheet';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Loader2, Search, Shield, Receipt, Download, Calendar as CalendarIcon, User } from 'lucide-react';
+import { Loader2, Shield, Receipt, Download, Calendar as CalendarIcon, User, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
 
 const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
   const { session, loading: authLoading } = useAuth();
   const userId = session?.user?.id;
   const { getModulePerm, loading: permLoading } = usePermissions(userId || '');
   const expenseAccess = getModulePerm('expenses');
+  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [seList, setSeList] = useState<{id: string, name: string}[]>([]);
   const [selectedExpense, setSelectedExpense] = useState<any | null>(null);
 
-  // 🚀 NEW: Advanced Filters
-  const [selectedMonth, setSelectedMonth] = useState(() => {
+  // 🚀 ON-SCREEN FILTERS
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedSE, setSelectedSE] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [categoryFilter, setCategoryFilter] = useState('All'); 
+  
+  // 🚀 EXPORT MODAL STATES
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportMonth, setExportMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [selectedSE, setSelectedSE] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
-  
+  const [exportSE, setExportSE] = useState('All');
+  const [exportLoading, setExportLoading] = useState(false);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 15;
 
-  // 1. Fetch SE List (Only once on mount)
+  // 1. Fetch Clean SE List (No Demos)
   useEffect(() => {
     if (!userId || !expenseAccess.can_view) return;
     
-    // 🚀 FIXED: Added .eq('is_demo', false) to only load real SEs into the filter
     supabase.from('profiles').select('id, name').eq('role', 'SE').eq('is_demo', false).order('name')
       .then(({ data }) => { if (data) setSeList(data); });
   }, [userId, expenseAccess.can_view]);
 
-  // 2. Fetch Expenses whenever the selected month changes
+  // 2. Fetch Expenses based on Selected Date
   useEffect(() => {
     if (!userId || !expenseAccess.can_view) return;
 
-    const fetchExpensesByMonth = async () => {
+    const fetchExpenses = async () => {
       setLoading(true);
       
-      // Calculate start and end dates of the selected YYYY-MM
-      const startDate = `${selectedMonth}-01T00:00:00.000Z`;
-      
-      // Move to the next month to get an exclusive end boundary
-      const [year, month] = selectedMonth.split('-');
-      const nextMonthDate = new Date(parseInt(year), parseInt(month), 1);
-      const endDate = nextMonthDate.toISOString();
+      let startDateStr, endDateStr;
 
-      const { data, error } = await supabase
+      if (selectedDate) {
+        startDateStr = `${selectedDate}T00:00:00.000Z`;
+        endDateStr = `${selectedDate}T23:59:59.999Z`;
+      } else {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        startDateStr = `${year}-${month}-01T00:00:00.000Z`;
+        
+        const nextMonth = new Date(year, now.getMonth() + 1, 1);
+        endDateStr = nextMonth.toISOString();
+      }
+
+      const { data } = await supabase
         .from('expenses')
-        // 🚀 UPDATED: Now joins the shifts table to grab odometer & GPS data!
-        .select('*, profiles:se_id(name), shifts:shift_id(start_km, end_km, total_distance)') 
-        .gte('date', startDate)
-        .lt('date', endDate)
+        .select('*, profiles:se_id(name), shifts:shift_id(start_time, end_time, start_km, end_km, total_distance, start_odo_image, end_odo_image)') 
+        .gte('date', startDateStr)
+        .lt('date', endDateStr)
         .order('date', { ascending: false });
 
       if (data) setExpenses(data);
       setLoading(false);
     };
 
-    fetchExpensesByMonth();
-  }, [selectedMonth, userId, expenseAccess.can_view]);
+    fetchExpenses();
+  }, [selectedDate, userId, expenseAccess.can_view]);
 
-  // Reset pagination when any filter changes
-  useEffect(() => setCurrentPage(1), [selectedMonth, selectedSE, statusFilter]);
+  // Reset pagination on filter change
+  useEffect(() => setCurrentPage(1), [selectedDate, selectedSE, statusFilter, categoryFilter]);
 
-  // 🚀 Apply local filters (SE and Status)
+  // 🚀 Apply local filters (WITH CASE INSENSITIVITY AND TRIMMING)
   const filteredData = expenses.filter((exp) => {
-    // 🚀 STRICT FILTER: Permanently hide expenses if the SE is not in our clean list (meaning they are a Demo)
     const isRealSE = seList.some(se => se.id === exp.se_id);
     if (!isRealSE) return false;
 
     const matchesSE = selectedSE === 'All' || exp.se_id === selectedSE;
     const matchesStatus = statusFilter === 'All' || exp.status === statusFilter;
-    return matchesSE && matchesStatus;
+    
+    // 🚀 BULLETPROOF CATEGORY FILTER
+    const matchesCategory = categoryFilter === 'All' || 
+      (exp.category || '').trim().toLowerCase() === categoryFilter.trim().toLowerCase();
+    
+    return matchesSE && matchesStatus && matchesCategory;
   });
+
+  // 🚀 Clean, combine, and capitalize categories for the dropdown
+  // 🚀 Clean and combine categories safely
+  const predefinedCategories = ['Travelling', 'Food', 'Misc', 'TA'];
+  const fetchedCategories = expenses
+    .filter(exp => seList.some(se => se.id === exp.se_id))
+    .map(e => (e.category || '').trim()); // Just take the raw word exactly as the DB has it
+
+  // Remove exact duplicates and sort
+  const uniqueCategories = Array.from(new Set([...predefinedCategories, ...fetchedCategories]))
+    .filter(Boolean)
+    .sort();
+  
 
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE) || 1;
   const paginatedData = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -104,24 +136,49 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     return <Badge variant="outline" className={styles[status] || 'bg-muted'}>{status}</Badge>;
   };
 
-  // 🚀 NEW: Export to Excel / CSV
-  const handleExport = () => {
+  const executeExport = async () => {
+    setExportLoading(true);
+
+    const [year, month] = exportMonth.split('-');
+    const startDate = `${exportMonth}-01T00:00:00.000Z`;
+    const nextMonth = new Date(parseInt(year), parseInt(month), 1);
+    const endDate = nextMonth.toISOString();
+
+    let query = supabase
+      .from('expenses')
+      .select('*, profiles:se_id(name)')
+      .gte('date', startDate)
+      .lt('date', endDate)
+      .order('date', { ascending: true });
+
+    if (exportSE !== 'All') {
+      query = query.eq('se_id', exportSE);
+    }
+
+    const { data, error } = await query;
+    setExportLoading(false);
+
+    if (error || !data) {
+      return toast({ title: 'Export Failed', description: error?.message, variant: 'destructive' });
+    }
+
+    const cleanData = data.filter(exp => seList.some(se => se.id === exp.se_id));
+
+    if (cleanData.length === 0) {
+      return toast({ title: 'No Data', description: 'No expenses found for this month/SE.' });
+    }
+
     const headers = ['Date', 'Executive Name', 'Category', 'Amount (INR)', 'Status', 'Remarks'];
     const csvRows = [headers.join(',')];
     
-    // 🚀 STRICT FILTER: Only export the expense if the SE exists in our clean seList!
-    const cleanDataToExport = filteredData.filter(exp => 
-      seList.some(se => se.id === exp.se_id)
-    );
-
-    cleanDataToExport.forEach(exp => {
+    cleanData.forEach(exp => {
       const row = [
         `"${new Date(exp.date).toLocaleDateString()}"`,
         `"${exp.profiles?.name || 'Unknown'}"`,
         `"${exp.category}"`,
         exp.amount,
         `"${exp.status}"`,
-        `"${(exp.remarks || '').replace(/"/g, '""')}"` // Escape quotes
+        `"${(exp.remarks || '').replace(/"/g, '""')}"` 
       ];
       csvRows.push(row.join(','));
     });
@@ -131,12 +188,13 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     const link = document.createElement('a');
     link.href = url;
     
-    // Dynamic file name based on filters
-    const seName = selectedSE === 'All' ? 'All_SEs' : seList.find(s => s.id === selectedSE)?.name?.replace(/\s+/g, '_');
-    link.download = `Expense_Report_${selectedMonth}_${seName}.csv`;
+    const seName = exportSE === 'All' ? 'All_SEs' : seList.find(s => s.id === exportSE)?.name?.replace(/\s+/g, '_');
+    link.download = `Expense_Report_${exportMonth}_${seName}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
+    setIsExportOpen(false);
   };
+
   if (authLoading || permLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   if (!expenseAccess.can_view) {
@@ -154,7 +212,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
   return (
     <AppLayout onLogout={onLogout}>
       <div className="space-y-6">
-        {/* Header & Controls */}
+        
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2">
@@ -166,34 +224,31 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
           <Button 
             variant="outline" 
             className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
-            onClick={handleExport}
-            disabled={filteredData.length === 0}
+            onClick={() => setIsExportOpen(true)}
           >
-            <Download className="h-4 w-4 mr-2" /> Export Report
+            <Download className="h-4 w-4 mr-2" /> Export CSV
           </Button>
         </div>
 
-        {/* 🚀 NEW: Dedicated Filter Bar */}
         <div className="bg-card border rounded-lg p-3 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            {/* Month Filter */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto flex-wrap">
+            
             <div className="relative flex items-center w-full sm:w-auto">
               <CalendarIcon className="absolute left-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
                 className="pl-9 h-9 min-w-[150px]"
               />
             </div>
             
-            {/* SE Dropdown Filter */}
             <div className="relative flex items-center w-full sm:w-auto">
               <User className="absolute left-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
               <select
                 value={selectedSE}
                 onChange={(e) => setSelectedSE(e.target.value)}
-                className="flex h-9 w-full min-w-[200px] items-center justify-between rounded-md border border-input bg-transparent pl-9 pr-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring"
+                className="flex h-9 w-full min-w-[180px] items-center justify-between rounded-md border border-input bg-transparent pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="All">All Executives</option>
                 {seList.map(se => (
@@ -201,9 +256,22 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
                 ))}
               </select>
             </div>
+
+            <div className="relative flex items-center w-full sm:w-auto">
+              <Tag className="absolute left-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="flex h-9 w-full min-w-[150px] items-center justify-between rounded-md border border-input bg-transparent pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="All">All Categories</option>
+                {uniqueCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Status Tabs */}
           <div className="w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
             <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full">
               <TabsList className="h-9 w-full sm:w-auto justify-start">
@@ -217,7 +285,6 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
           </div>
         </div>
 
-        {/* Data Table */}
         <div className="bg-card border rounded-lg shadow-sm flex flex-col overflow-hidden">
           <div className="overflow-x-auto">
             {loading ? (
@@ -265,19 +332,77 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
 
           {/* Pagination Footer */}
           {!loading && filteredData.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 border-t bg-muted/20 gap-3">
-              <div className="text-xs text-muted-foreground font-medium">
+            <div className="flex flex-col md:flex-row items-center justify-between px-4 py-3 border-t bg-muted/20 gap-4">
+              
+              {/* Left: Entry Count */}
+              <div className="text-xs text-muted-foreground font-medium w-full md:w-auto text-center md:text-left">
                 Showing <span className="text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)}</span> of <span className="text-foreground">{filteredData.length}</span> entries
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* 🚀 CENTER: The Dynamic Total Amount */}
+              <div className="flex items-center gap-2 bg-primary/10 text-primary px-4 py-1.5 rounded-md border border-primary/20 shadow-sm">
+                <span className="text-xs font-bold uppercase tracking-wider">Filtered Total:</span>
+                <span className="text-sm font-extrabold">
+                  ₹{filteredData.reduce((sum, exp) => sum + Number(exp.amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Right: Pagination Controls */}
+              <div className="flex items-center gap-2 w-full md:w-auto justify-center md:justify-end">
                 <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
                 <div className="text-xs font-semibold px-2">Page {currentPage} of {totalPages}</div>
                 <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
               </div>
+              
             </div>
           )}
         </div>
       </div>
+
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Expenses to CSV</DialogTitle>
+            <DialogDescription>
+              Select the month and executive to download their expense records.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">Select Month *</label>
+              <Input 
+                type="month" 
+                value={exportMonth} 
+                onChange={e => setExportMonth(e.target.value)} 
+                required 
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">Select Executive *</label>
+              <select
+                value={exportSE}
+                onChange={(e) => setExportSE(e.target.value)}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="All">All Executives</option>
+                {seList.map(se => (
+                  <option key={se.id} value={se.id}>{se.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsExportOpen(false)}>Cancel</Button>
+            <Button onClick={executeExport} disabled={exportLoading}>
+              {exportLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+              Download Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ExpenseActionSheet 
         open={!!selectedExpense} 

@@ -1,199 +1,176 @@
-import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Receipt, Calendar, User, FileText, CheckCircle, XCircle, HelpCircle, Navigation, Map } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, CheckCircle, XCircle, HelpCircle, Car, Clock, Navigation } from 'lucide-react';
 
 interface Props {
-  expense: any | null;
   open: boolean;
+  expense: any;
   onClose: () => void;
-  onUpdate: (id: string, newStatus: string) => void;
+  onUpdate: (id: string, status: string) => void;
   canEdit: boolean;
 }
 
-export const ExpenseActionSheet = ({ expense, open, onClose, onUpdate, canEdit }: Props) => {
-  const { toast } = useToast();
+export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }: Props) => {
   const [updating, setUpdating] = useState(false);
+  const { toast } = useToast();
 
   if (!expense) return null;
 
-  const handleUpdateStatus = async (newStatus: string) => {
+  const handleStatusChange = async (newStatus: string) => {
     setUpdating(true);
-    try {
-      const { error } = await supabase
-        .from('expenses')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', expense.id);
+    const { error } = await supabase.from('expenses').update({ status: newStatus }).eq('id', expense.id);
+    setUpdating(false);
 
-      if (error) throw error;
-      
-      toast({ title: `Expense ${newStatus}`, description: `The expense has been marked as ${newStatus}.` });
+    if (error) {
+      toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Expense Updated', description: `Status changed to ${newStatus}` });
       onUpdate(expense.id, newStatus);
       onClose();
-    } catch (error: any) {
-      toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
-    } finally {
-      setUpdating(false);
     }
   };
 
-  const statusColors: any = {
-    'Pending': 'bg-amber-100 text-amber-800 border-amber-200',
-    'Approved': 'bg-green-100 text-green-800 border-green-200',
-    'Rejected': 'bg-red-100 text-red-800 border-red-200',
-    'Queried': 'bg-blue-100 text-blue-800 border-blue-200',
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
+      case 'Queried': return 'bg-blue-100 text-blue-800 border-blue-200';
+      default: return 'bg-amber-100 text-amber-800 border-amber-200';
+    }
   };
 
-  // 🚀 LOGIC: Check if it's a travel expense and safely parse the distances
-  const isTravel = expense.category?.toLowerCase().includes('travel');
-  const shift = expense.shifts; // The joined data from our updated page query
-  let manualKm = 0;
-  let gpsKm = 0;
-
-  if (isTravel && shift) {
-    const start = parseFloat(shift.start_km) || 0;
-    const end = parseFloat(shift.end_km) || 0;
-    manualKm = end > start ? (end - start) : 0;
-    gpsKm = shift.total_distance || 0;
+  // Safe parsing for shift data
+  const shift = expense.shifts;
+  let odoDistance = 0;
+  if (shift?.start_km && shift?.end_km) {
+    const s = parseFloat(shift.start_km.replace(/[^0-9.]/g, ''));
+    const e = parseFloat(shift.end_km.replace(/[^0-9.]/g, ''));
+    if (!isNaN(s) && !isNaN(e) && e > s) odoDistance = parseFloat((e - s).toFixed(1));
   }
+  
+  const distanceUsed = odoDistance > 0 ? odoDistance : (shift?.total_distance || 0);
+  const taAmount = distanceUsed * 4;
+  const daAmount = distanceUsed > 60 ? 150 : 0;
 
   return (
-    <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
         <SheetHeader className="px-6 py-5 border-b bg-muted/30">
-          <div className="flex items-start justify-between">
+          <div className="flex justify-between items-start">
             <div>
-              <SheetTitle className="text-xl">Expense Details</SheetTitle>
-              <SheetDescription>Review and process this claim.</SheetDescription>
+              <SheetTitle className="text-xl">Expense Review</SheetTitle>
+              <SheetDescription className="font-medium text-primary mt-1">
+                {expense.profiles?.name} • {new Date(expense.date).toLocaleDateString()}
+              </SheetDescription>
             </div>
-            <Badge variant="outline" className={statusColors[expense.status] || 'bg-muted'}>
-              {expense.status}
-            </Badge>
+            <Badge variant="outline" className={getStatusColor(expense.status)}>{expense.status}</Badge>
           </div>
         </SheetHeader>
 
-        <ScrollArea className="flex-1 px-6 py-4">
-          <div className="space-y-6">
-            {/* Amount & Category */}
-            <div className="bg-card border rounded-lg p-4 shadow-sm text-center">
-              <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                {expense.category}
-              </div>
-              <div className="text-4xl font-black text-primary">
-                ₹{Number(expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </div>
-            </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+          
+          {/* Amount Overview */}
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
+            <p className="text-sm font-semibold text-primary uppercase">{expense.category}</p>
+            <h2 className="text-4xl font-bold text-foreground mt-1">
+              ₹{Number(expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </h2>
+          </div>
 
-            {/* Info List */}
-            <div className="space-y-3 bg-muted/30 p-4 rounded-lg border">
-              <div className="flex items-center gap-3">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{expense.profiles?.name || 'Unknown SE'}</span>
+          {/* 🚀 NEW: Auto-Generated Shift Breakdown */}
+          {shift && expense.category === 'TA' && (
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold flex items-center gap-2 border-b pb-2"><Car className="h-4 w-4" /> Travel Breakdown</h4>
+              
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-card border rounded-lg p-3 text-center shadow-sm">
+                  <Navigation className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase">Distance</span>
+                  <p className="text-sm font-bold">{distanceUsed} km</p>
+                </div>
+                <div className="bg-card border rounded-lg p-3 text-center shadow-sm">
+                  <Clock className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase">Duration</span>
+                  <p className="text-sm font-bold">
+                    {shift.end_time && shift.start_time ? `${((shift.end_time - shift.start_time) / 3600000).toFixed(1)} hrs` : 'N/A'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{new Date(expense.date).toLocaleString()}</span>
+
+              {/* Allowance Math */}
+              <div className="bg-muted/30 rounded-md p-3 text-sm space-y-2 border">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Travel Allowance (₹4/km)</span>
+                  <span className="font-semibold">₹{taAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Daily Allowance ({distanceUsed > 60 ? '> 60km' : '< 60km'})</span>
+                  <span className="font-semibold">₹{daAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 mt-2 font-bold">
+                  <span>Total Calculated</span>
+                  <span>₹{(taAmount + daAmount).toFixed(2)}</span>
+                </div>
               </div>
-              {expense.remarks && (
-                <div className="flex items-start gap-3">
-                  <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <span className="text-sm text-muted-foreground italic">"{expense.remarks}"</span>
+
+              {/* Odometer Photos */}
+              {(shift.start_odo_image || shift.end_odo_image) && (
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  {shift.start_odo_image && (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">Start: {shift.start_km || 'N/A'} km</span>
+                      <a href={shift.start_odo_image} target="_blank" rel="noreferrer" className="block rounded-md border shadow-sm hover:opacity-90 overflow-hidden">
+                        <img src={shift.start_odo_image} alt="Start Odo" className="w-full h-20 object-cover" />
+                      </a>
+                    </div>
+                  )}
+                  {shift.end_odo_image && (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">End: {shift.end_km || 'N/A'} km</span>
+                      <a href={shift.end_odo_image} target="_blank" rel="noreferrer" className="block rounded-md border shadow-sm hover:opacity-90 overflow-hidden">
+                        <img src={shift.end_odo_image} alt="End Odo" className="w-full h-20 object-cover" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+          )}
 
-            {/* 🚀 NEW: Distance Tracking Audit Card (Only shows for Travel expenses) */}
-            {isTravel && shift && (
-              <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 shadow-sm">
-                <h4 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-2">
-                  <Navigation className="h-4 w-4" /> Shift Distance Audit
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white p-3 rounded-md border shadow-sm text-center">
-                    <div className="text-xs text-muted-foreground uppercase font-semibold mb-1">Manual Reading</div>
-                    <div className="text-lg font-black text-blue-950">
-                      {manualKm > 0 ? manualKm.toFixed(1) : '-'} <span className="text-sm font-semibold">km</span>
-                    </div>
-                    <div className="text-[10px] font-medium text-muted-foreground mt-1">
-                      {shift.start_km || 0} → {shift.end_km || 0}
-                    </div>
-                  </div>
-                  <div className="bg-white p-3 rounded-md border shadow-sm text-center">
-                    <div className="text-xs text-muted-foreground uppercase font-semibold mb-1 flex items-center justify-center gap-1">
-                      <Map className="h-3 w-3" /> GPS Logged
-                    </div>
-                    <div className="text-lg font-black text-blue-950">
-                      {gpsKm.toFixed(1)} <span className="text-sm font-semibold">km</span>
-                    </div>
-                    <div className="text-[10px] font-medium text-muted-foreground mt-1">
-                      System calculated
-                    </div>
-                  </div>
-                </div>
-                {/* Optional Warning if mismatch is huge (e.g. > 10% difference) */}
-                {manualKm > 0 && Math.abs(manualKm - gpsKm) > (gpsKm * 0.15) && (
-                  <div className="mt-3 text-xs font-semibold text-red-600 bg-red-50 p-2 rounded border border-red-100 text-center">
-                    ⚠️ High variance detected between Manual & GPS logs.
-                  </div>
-                )}
+          {/* Standard Expense Details */}
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground font-semibold uppercase">Remarks</span>
+              <p className="text-sm bg-muted/30 p-3 rounded-md border">{expense.remarks || 'No remarks provided.'}</p>
+            </div>
+
+            {expense.receipt_url && expense.receipt_url !== 'SYSTEM_GENERATED' && (
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground font-semibold uppercase">Attached Receipt</span>
+                <a href={expense.receipt_url} target="_blank" rel="noreferrer" className="block mt-1">
+                  <img src={expense.receipt_url} alt="Receipt" className="w-full max-h-48 object-contain rounded-lg border bg-muted" />
+                </a>
               </div>
             )}
-
-            {/* Receipt Image */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <Receipt className="h-4 w-4" /> Attached Receipt
-              </h4>
-              <div className="border rounded-lg overflow-hidden bg-muted flex items-center justify-center min-h-[250px]">
-                {expense.receipt_url ? (
-                  <img 
-                    src={expense.receipt_url} 
-                    alt="Receipt" 
-                    className="w-full h-auto max-h-[400px] object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => window.open(expense.receipt_url, '_blank')}
-                  />
-                ) : (
-                  <span className="text-muted-foreground text-sm">No receipt image provided.</span>
-                )}
-              </div>
-              {expense.receipt_url && (
-                <p className="text-xs text-muted-foreground text-center mt-1">Click image to open in full size.</p>
-              )}
-            </div>
           </div>
-        </ScrollArea>
+        </div>
 
-        {/* Action Buttons */}
-        {canEdit && (
-          <div className="p-4 border-t bg-card grid grid-cols-3 gap-2">
-            <Button 
-              variant="outline" 
-              className="bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 border-red-200"
-              onClick={() => handleUpdateStatus('Rejected')}
-              disabled={updating || expense.status === 'Rejected'}
-            >
-              <XCircle className="h-4 w-4 mr-1.5" /> Reject
+        {canEdit && expense.status === 'Pending' && (
+          <SheetFooter className="px-6 py-4 border-t bg-muted/10 grid grid-cols-3 gap-3">
+            <Button variant="outline" className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200" disabled={updating} onClick={() => handleStatusChange('Rejected')}>
+              <XCircle className="h-4 w-4 mr-2" /> Reject
             </Button>
-            <Button 
-              variant="outline" 
-              className="bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 border-blue-200"
-              onClick={() => handleUpdateStatus('Queried')}
-              disabled={updating || expense.status === 'Queried'}
-            >
-              <HelpCircle className="h-4 w-4 mr-1.5" /> Query
+            <Button variant="outline" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" disabled={updating} onClick={() => handleStatusChange('Queried')}>
+              <HelpCircle className="h-4 w-4 mr-2" /> Query
             </Button>
-            <Button 
-              className="bg-green-600 hover:bg-green-700 text-white"
-              onClick={() => handleUpdateStatus('Approved')}
-              disabled={updating || expense.status === 'Approved'}
-            >
-              <CheckCircle className="h-4 w-4 mr-1.5" /> Approve
+            <Button className="bg-green-600 text-white hover:bg-green-700" disabled={updating} onClick={() => handleStatusChange('Approved')}>
+              {updating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />} Approve
             </Button>
-          </div>
+          </SheetFooter>
         )}
       </SheetContent>
     </Sheet>
