@@ -37,6 +37,8 @@ const navItems = [
   { to: '/attendance', label: 'Attendance', icon: Clock, module: 'attendance' }, 
   { to: '/expenses', label: 'Expenses', icon: Receipt, module: 'expenses' },
   { to: '/locations', label: 'Location Master', icon: Map, module: 'locations' },
+  { to: '/shifts', label: 'Shifts', icon: CalendarDays, module: 'shifts' },
+  
   
 ];
 
@@ -95,8 +97,9 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
   };
 
   return (
-    <aside className="flex h-full w-full flex-col border-r border-border bg-card">
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-border">
+    <aside className="flex h-screen w-full flex-col border-r border-border bg-card overflow-hidden">
+      {/* 1. Logo Header (Always stays at top) */}
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-border flex-shrink-0">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent">
           <Sprout className="h-5 w-5 text-primary" />
         </div>
@@ -108,54 +111,57 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {filteredNavItems.map(renderLink)}
-      </nav>
+      {/* 2. Unified Scroll Window (Links and Settings roll inside here) */}
+      <div className="flex-1 p-3 space-y-4 overflow-y-auto">
+        <nav className="space-y-1">
+          {filteredNavItems.map(renderLink)}
+        </nav>
 
-      {/* Hide Settings if role is Coordinator */}
-      {role !== 'CO' && (
-        <div className="p-3 space-y-1 border-t border-border">
-          <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <CollapsibleTrigger
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                settingsActive
-                  ? 'bg-accent text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
-            >
-              <Settings className="h-4 w-4 shrink-0" />
-              <span className="flex-1 text-left">Settings</span>
-              <ChevronDown
+        {/* Hide Settings if role is Coordinator */}
+        {role !== 'CO' && (
+          <div className="pt-3 border-t border-border">
+            <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <CollapsibleTrigger
                 className={cn(
-                  'h-4 w-4 shrink-0 transition-transform',
-                  settingsOpen && 'rotate-180',
+                  'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                  settingsActive
+                    ? 'bg-accent text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-1 ml-4 pl-3 border-l border-border space-y-1">
-              {(settingsChildren || []).map(child => {
-                const active = location.pathname === child.to;
-                return (
-                  <NavLink
-                    key={child.to}
-                    to={child.to}
-                    onClick={onNavigate}
-                    className={cn(
-                      'block px-3 py-1.5 rounded-md text-sm transition-colors',
-                      active
-                        ? 'bg-accent text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    {child.label}
-                  </NavLink>
-                );
-              })}
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      )}
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left">Settings</span>
+                <ChevronDown
+                  className={cn(
+                    'h-4 w-4 shrink-0 transition-transform',
+                    settingsOpen && 'rotate-180',
+                  )}
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-1 ml-4 pl-3 border-l border-border space-y-1">
+                {(settingsChildren || []).map(child => {
+                  const active = location.pathname === child.to;
+                  return (
+                    <NavLink
+                      key={child.to}
+                      to={child.to}
+                      onClick={onNavigate}
+                      className={cn(
+                        'block px-3 py-1.5 rounded-md text-sm transition-colors',
+                        active
+                          ? 'bg-accent text-primary font-medium'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      )}
+                    >
+                      {child.label}
+                    </NavLink>
+                  );
+                })}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
+      </div>
     </aside>
   );
 };

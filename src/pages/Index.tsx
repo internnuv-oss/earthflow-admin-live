@@ -16,6 +16,7 @@ import RoutesPage from './RoutesPage';
 import AttendancePage from './AttendancePage';
 import ExpensesPage from './ExpensesPage';
 import LocationMasterPage from './LocationMasterPage';
+import ShiftsPage from '@/pages/ShiftsPage';
 const Index = () => {
   const { session, loading } = useAuth();
   const logout = async () => { await supabase.auth.signOut(); };
@@ -47,13 +48,16 @@ const Index = () => {
       <Route path="/settings/legacy" element={guard(<SettingsPage onLogout={logout} />)} />
       <Route path="/fpos" element={guard(<FposPage onLogout={logout} />)} />
       <Route path="/locations" element={session ? <LocationMasterPage onLogout={logout} /> : <Navigate to="/login" replace />} />
+      <Route path="/shifts" element={guard(<ShiftsPage onLogout={logout} />)}/>
       <Route 
   path="/attendance" 
   element={guard(<AttendancePage onLogout={logout} />)} 
 />
 <Route path="/expenses" element={guard(<ExpensesPage onLogout={logout} />)} />
+
       <Route path="*" element={<NotFound />} />
     </Routes>
+    
     
   );
 };

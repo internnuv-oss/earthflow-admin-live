@@ -107,7 +107,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
 
   // 🚀 Clean, combine, and capitalize categories for the dropdown
   // 🚀 Clean and combine categories safely
-  const predefinedCategories = ['Travelling', 'Food', 'Misc', 'Total Allowance'];
+  const predefinedCategories = ['Travelling', 'Food', 'Misc', 'TA/DA'];
   const fetchedCategories = expenses
     .filter(exp => seList.some(se => se.id === exp.se_id))
     .map(e => (e.category || '').trim()); // Just take the raw word exactly as the DB has it

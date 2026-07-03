@@ -1,16 +1,18 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle, XCircle, HelpCircle, Car, Clock, Navigation } from 'lucide-react';
 
 interface Props {
   open: boolean;
   expense: any;
   onClose: () => void;
-  onUpdate: (id: string, status: string) => void;
+  onUpdate: (id: string, status: string, newAmount?: number) => void; // 🚀 Added optional newAmount parameters
   canEdit: boolean;
 }
 
@@ -18,30 +20,19 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
   const [updating, setUpdating] = useState(false);
   const { toast } = useToast();
 
+  // 🚀 NEW: Track separate selection approvals for TA and DA components
+  const [approveTA, setApproveTA] = useState(true);
+  const [approveDA, setApproveDA] = useState(true);
+
+  // Reset checkboxes to true whenever sheet opens or targets new expense
+  useEffect(() => {
+    if (open) {
+      setApproveTA(true);
+      setApproveDA(true);
+    }
+  }, [open, expense]);
+
   if (!expense) return null;
-
-  const handleStatusChange = async (newStatus: string) => {
-    setUpdating(true);
-    const { error } = await supabase.from('expenses').update({ status: newStatus }).eq('id', expense.id);
-    setUpdating(false);
-
-    if (error) {
-      toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: 'Expense Updated', description: `Status changed to ${newStatus}` });
-      onUpdate(expense.id, newStatus);
-      onClose();
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Approved': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
-      case 'Queried': return 'bg-blue-100 text-blue-800 border-blue-200';
-      default: return 'bg-amber-100 text-amber-800 border-amber-200';
-    }
-  };
 
   // Safe parsing for shift data
   const shift = expense.shifts;
@@ -55,6 +46,60 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
   const distanceUsed = odoDistance > 0 ? odoDistance : (shift?.total_distance || 0);
   const taAmount = distanceUsed * 4;
   const daAmount = distanceUsed > 60 ? 150 : 0;
+
+  // 🚀 Live screen summary depending on current checked states
+  const liveTotalCalculated = (approveTA ? taAmount : 0) + (approveDA ? daAmount : 0);
+
+  const handleStatusChange = async (newStatus: string) => {
+    setUpdating(true);
+    
+    let finalAmount = Number(expense.amount);
+    let finalRemarks = expense.remarks || '';
+
+    // 🚀 Handle custom amount scaling logic if approved with altered selections
+    if (newStatus === 'Approved' && expense.category === 'TA/DA') {
+      finalAmount = liveTotalCalculated;
+      
+      if (finalAmount === 0) {
+        setUpdating(false);
+        return toast({
+          title: 'Action Blocked',
+          description: 'Cannot approve an allowance value of ₹0. Please tick a component or reject the request.',
+          variant: 'destructive'
+        });
+      }
+      
+      finalRemarks += ` [Adjusted on approval: Paid TA=${approveTA ? 'Yes' : 'No'}, DA=${approveDA ? 'Yes' : 'No'}]`;
+    }
+
+    const { error } = await supabase
+      .from('expenses')
+      .update({ 
+        status: newStatus,
+        amount: finalAmount,
+        remarks: finalRemarks
+      })
+      .eq('id', expense.id);
+
+    setUpdating(false);
+
+    if (error) {
+      toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Expense Updated', description: `Status changed to ${newStatus}` });
+      onUpdate(expense.id, newStatus, finalAmount); // Pass down adjusted amount back to list view hook
+      onClose();
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
+      case 'Queried': return 'bg-blue-100 text-blue-800 border-blue-200';
+      default: return 'bg-amber-100 text-amber-800 border-amber-200';
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -77,12 +122,12 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
             <p className="text-sm font-semibold text-primary uppercase">{expense.category}</p>
             <h2 className="text-4xl font-bold text-foreground mt-1">
-              ₹{Number(expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹{Number(expense.status === 'Pending' && expense.category === 'TA/DA' ? liveTotalCalculated : expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </h2>
           </div>
 
-          {/* 🚀 NEW: Auto-Generated Shift Breakdown */}
-          {shift && expense.category === 'Total Allowance' && (
+          {/* Auto-Generated Shift Breakdown */}
+          {shift && expense.category === 'TA/DA' && (
             <div className="space-y-4">
               <h4 className="text-sm font-bold flex items-center gap-2 border-b pb-2"><Car className="h-4 w-4" /> Travel Breakdown</h4>
               
@@ -101,19 +146,42 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                 </div>
               </div>
 
-              {/* Allowance Math */}
-              <div className="bg-muted/30 rounded-md p-3 text-sm space-y-2 border">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Travel Allowance (₹4/km)</span>
-                  <span className="font-semibold">₹{taAmount.toFixed(2)}</span>
+              {/* Allowance Math with Selectable Box Approvals */}
+              <div className="bg-muted/30 rounded-md p-3 text-sm space-y-3 border">
+                
+                {/* 🚀 TA Checkbox */}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <Checkbox 
+                      id="approve-ta" 
+                      checked={approveTA} 
+                      disabled={!canEdit || expense.status !== 'Pending'} 
+                      onCheckedChange={(v) => setApproveTA(!!v)}
+                    />
+                    <Label htmlFor="approve-ta" className="text-muted-foreground cursor-pointer text-sm">Travel Allowance (₹4/km)</Label>
+                  </div>
+                  <span className={`font-semibold ${approveTA ? '' : 'line-through text-muted-foreground/60'}`}>₹{taAmount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Daily Allowance ({distanceUsed > 60 ? '> 60km' : '< 60km'})</span>
-                  <span className="font-semibold">₹{daAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between border-t pt-2 mt-2 font-bold">
-                  <span>Total Calculated</span>
-                  <span>₹{(taAmount + daAmount).toFixed(2)}</span>
+
+                {/* 🚀 DA Checkbox (Only visible if DA is greater than 0) */}
+                {daAmount > 0 && (
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="approve-da" 
+                        checked={approveDA} 
+                        disabled={!canEdit || expense.status !== 'Pending'} 
+                        onCheckedChange={(v) => setApproveDA(!!v)}
+                      />
+                      <Label htmlFor="approve-da" className="text-muted-foreground cursor-pointer text-sm">Daily Allowance (&gt; 60km)</Label>
+                    </div>
+                    <span className={`font-semibold ${approveDA ? '' : 'line-through text-muted-foreground/60'}`}>₹{daAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between border-t pt-2 mt-2 font-bold text-base">
+                  <span>{expense.status === 'Pending' ? 'Adjusted Total' : 'Total Calculated'}</span>
+                  <span>₹{liveTotalCalculated.toFixed(2)}</span>
                 </div>
               </div>
 
