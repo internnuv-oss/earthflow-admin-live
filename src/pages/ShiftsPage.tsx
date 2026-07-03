@@ -73,7 +73,7 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
     if (data) setShifts(data);
     setLoading(false);
   };
-  
+
   useEffect(() => {
     if (userId && shiftAccess.can_view) fetchShifts();
   }, [selectedDate, selectedSE, userId, shiftAccess.can_view]);
@@ -277,10 +277,35 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
                       <td className="px-4 py-3">{new Date(Number(shift.start_time)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
                       <td className="px-4 py-3">{shift.end_time ? new Date(Number(shift.end_time)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '—'}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {shift.is_personal_vehicle && <Car className="h-3.5 w-3.5 text-blue-500" />}
-                          <span>{shift.total_distance || 0} km</span>
-                        </div>
+                        {(() => {
+                          // 🚀 CALCULATE true odometer distance on the fly
+                          let odoDistance = 0;
+                          if (shift.start_km && shift.end_km) {
+                            const s = parseFloat(shift.start_km.replace(/[^0-9.]/g, ''));
+                            const e = parseFloat(shift.end_km.replace(/[^0-9.]/g, ''));
+                            if (!isNaN(s) && !isNaN(e) && e > s) {
+                              odoDistance = parseFloat((e - s).toFixed(1));
+                            }
+                          }
+                          
+                          // Prioritize Odo Distance, fallback to GPS total_distance
+                          const finalDistanceDisplay = odoDistance > 0 ? odoDistance : (shift.total_distance || 0);
+
+                          return (
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-1.5 font-medium">
+                                {shift.is_personal_vehicle && <Car className="h-3.5 w-3.5 text-blue-500" />}
+                                <span>{finalDistanceDisplay} km</span>
+                              </div>
+                              {/* Subtitle helper showing if it used Odo readings or GPS */}
+                              {odoDistance > 0 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  Odo: {shift.start_km} - {shift.end_km}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {shiftAccess.can_edit && (
