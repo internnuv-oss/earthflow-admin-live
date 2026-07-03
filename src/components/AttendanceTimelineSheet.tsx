@@ -8,7 +8,8 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
   // Replace with your actual Google Maps API Key (preferably from your .env file)
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "YOUR_API_KEY_HERE"
+    // 🚀 MUST HAVE THE VITE_ PREFIX
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY 
   });
 
   if (!isLoaded) return <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">Loading Map...</div>;
