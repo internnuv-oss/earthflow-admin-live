@@ -54,11 +54,16 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
   }, [userId, shiftAccess.can_view]);
 
   // 2. Fetch Shifts based on filters
+  // 2. Fetch Shifts based on filters (Filtering out Demo Executives)
   const fetchShifts = async () => {
     setLoading(true);
+    
+    // 🚀 FIXED: Inner join syntax 'profiles!inner(name, is_demo)' forces Supabase 
+    // to filter the shifts table based on conditions inside the linked profiles table
     let query = supabase
       .from('shifts')
-      .select('*, profiles:se_id(name)')
+      .select('*, profiles!inner(name, is_demo)')
+      .eq('profiles.is_demo', false) // 🚀 EXCLUDE DEMO EXECUTIVES HERE
       .order('start_time', { ascending: false });
 
     if (selectedDate) query = query.eq('date', selectedDate);
@@ -68,7 +73,7 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
     if (data) setShifts(data);
     setLoading(false);
   };
-
+  
   useEffect(() => {
     if (userId && shiftAccess.can_view) fetchShifts();
   }, [selectedDate, selectedSE, userId, shiftAccess.can_view]);
