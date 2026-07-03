@@ -250,9 +250,9 @@ const FarmersPage = ({ onLogout }: Props) => {
     const uniqueTrees = Array.from(treeTypes).sort();
 
     const headers = [
-      'Sr. No.', 'Status', 'Onboarded By', 'Assigned SE', 'Date Onboarded', 'Full Name', 'Mobile',
+      'Sr. No.', 'Status', 'Onboarded By', 'Assigned SE', 'Route Name', 'Date Onboarded', 'Full Name', 'Mobile',
       'Alternate Mobile', 'Father Name', 'Village', 'Taluka', 'District/City', 'State',
-      'Pincode', 'Total Land', 'Land Unit', 'Irrigated Land', 'Rain Fed Land',
+      'Pincode', 'Total Land (Acres)', 'Irrigated Land', 'Rain Fed Land',
       'Major Crops', 'Soil Type', 'Water Source', 'Irrigation Type', 'Farm Equipments',
       'Biofertilizer Used', 'Is Intercropping'
     ];
@@ -263,10 +263,8 @@ const FarmersPage = ({ onLogout }: Props) => {
     for (let i = 1; i <= maxPastCrops; i++) {
       headers.push(
         `Past Crop ${i}: Name`, 
-        `Past Crop ${i}: Area`, 
-        `Past Crop ${i}: Area Unit`, 
-        `Past Crop ${i}: Yield`, 
-        `Past Crop ${i}: Yield Unit`, 
+        `Past Crop ${i}: Area (Acres)`, 
+        `Past Crop ${i}: Yield (Kg)`, // 🚀 MERGED YIELD UNIT
         `Past Crop ${i}: Inputs Used`,
         `Past Crop ${i}: Problems Faced`
       );
@@ -277,11 +275,35 @@ const FarmersPage = ({ onLogout }: Props) => {
       const str = String(val).replace(/"/g, '""'); 
       return `"${str}"`;
     };
+    
     const joinArray = (arr: any) => Array.isArray(arr) ? arr.join('; ') : arr || '';
+    
     const getQuantity = (arr: any, typeName: string) => {
       if (!Array.isArray(arr)) return '0';
       const item = arr.find((obj: any) => obj.type === typeName);
       return item ? item.quantity : '0';
+    };
+
+    // Area Converter (Bigha -> Acres)
+    const convertToAcres = (value: any, unit: string) => {
+      const num = parseFloat(value);
+      if (isNaN(num)) return '';
+      if ((unit || '').trim().toLowerCase() === 'bigha') {
+        return (num * 0.4).toFixed(2); 
+      }
+      return num.toString(); 
+    };
+
+    // 🚀 NEW: Yield Converter (Tonnes/Quintals -> Kg)
+    const convertToKg = (value: any, unit: string) => {
+      const num = parseFloat(value);
+      if (isNaN(num)) return '';
+      const safeUnit = (unit || '').trim().toLowerCase();
+      
+      if (safeUnit === 'tonnes') return (num * 1000).toString();
+      if (safeUnit === 'quintals') return (num * 100).toString();
+      
+      return num.toString(); // Default fallback to Kg
     };
 
     const csvRows = [headers.join(',')];
@@ -291,16 +313,16 @@ const FarmersPage = ({ onLogout }: Props) => {
       const fd = row.farm_details || {};
       const hd = row.history_details || {};
 
-      // Look up Assigned SE safely by village name case-insensitively
       const safeVillage = (row.village || pd.village || '').trim().toLowerCase();
       const assignedSeName = villageToSE[safeVillage] || 'Unassigned';
+      const routeName = villageToRoute[safeVillage] || 'Unassigned'; 
 
-      // 🚀 UPDATED: Placed escape(assignedSeName) right next to row.profiles?.name
       const baseRow = [
         escape(index + 1),
         escape(row.status || 'SUBMITTED'),
         escape(row.profiles?.name || '—'),
-        escape(assignedSeName), // 🚀 NEW FLATTENED FIELD
+        escape(assignedSeName), 
+        escape(routeName),
         escape(new Date(row.created_at).toLocaleDateString()),
         escape(row.full_name),
         escape(row.mobile),
@@ -311,8 +333,7 @@ const FarmersPage = ({ onLogout }: Props) => {
         escape(pd.city),
         escape(pd.state),
         escape(pd.pincode),
-        escape(fd.totalLand),
-        escape(fd.landUnit),
+        escape(convertToAcres(fd.totalLand, fd.landUnit)), 
         escape(fd.irrigatedLand),
         escape(fd.rainFedLand),
         escape(joinArray(fd.majorCrops)),
@@ -324,15 +345,17 @@ const FarmersPage = ({ onLogout }: Props) => {
         escape(fd.isIntercropping)
       ];
 
-    uniqueCattles.forEach(c => baseRow.push(escape(getQuantity(fd.cattles, c))));
+      uniqueCattles.forEach(c => baseRow.push(escape(getQuantity(fd.cattles, c))));
       uniqueTrees.forEach(t => baseRow.push(escape(getQuantity(fd.sideTrees, t))));
 
       const pastCropsArray = Array.isArray(hd.pastCrops) ? hd.pastCrops : [];
       for (let i = 0; i < maxPastCrops; i++) {
         const crop = pastCropsArray[i] || {};
         baseRow.push(
-          escape(crop.cropName || ''), escape(crop.area || ''), escape(crop.areaUnit || ''),
-          escape(crop.yield || ''), escape(crop.yieldUnit || ''), escape(joinArray(crop.inputUsed)),
+          escape(crop.cropName || ''), 
+          escape(convertToAcres(crop.area, crop.areaUnit)), 
+          escape(convertToKg(crop.yield, crop.yieldUnit)), // 🚀 CONVERTED & MERGED YIELD
+          escape(joinArray(crop.inputUsed)),
           escape(crop.problemsFaced || '')
         );
       }
