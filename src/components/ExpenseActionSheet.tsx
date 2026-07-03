@@ -82,7 +82,7 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           </div>
 
           {/* 🚀 NEW: Auto-Generated Shift Breakdown */}
-          {shift && expense.category === 'TA' && (
+          {shift && expense.category === 'Total Allowance' && (
             <div className="space-y-4">
               <h4 className="text-sm font-bold flex items-center gap-2 border-b pb-2"><Car className="h-4 w-4" /> Travel Breakdown</h4>
               

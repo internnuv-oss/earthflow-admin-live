@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Shield, Plus, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { RouteBuilderDialog } from '@/components/RouteBuilderDialog';
 import { SERoutesSheet } from '@/components/SERoutesSheet';
+import { TerritoryViewSheet } from '@/components/TerritoryViewSheet';
 
 interface RoutesPageProps {
   onLogout: () => void;
@@ -26,6 +27,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [editData, setEditData] = useState<any | null>(null);
   const [selectedSheetSE, setSelectedSheetSE] = useState<any | null>(null);
+  const [selectedViewSE, setSelectedViewSE] = useState<any | null>(null);
 
   const { toast } = useToast();
   const { session, loading: authLoading } = useAuth();
@@ -196,13 +198,33 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{totalVillages} Villages</td>
                       <td className="px-6 py-4 text-right">
-  {se.routes.length > 0 ? (
-    // 🚀 2. If they can view but NOT edit, change button text to "View Territories" 
-    <Button variant="ghost" size="sm" onClick={() => setSelectedSheetSE(se)}>
-      {routesAccess.can_edit ? 'View / Edit Routes' : 'View Territories'}
-    </Button>
-  ) : null}
-</td>
+                        {se.routes.length > 0 ? (
+                          <div className="flex items-center justify-end gap-2">
+                            
+                            {/* 🚀 1. ALWAYS SHOW: Everyone gets the View Territories drill-down */}
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="text-primary hover:text-primary border-primary/20 bg-primary/5"
+                              onClick={() => setSelectedViewSE(se)}
+                            >
+                              View Territories
+                            </Button>
+
+                            {/* 🚀 2. CONDITIONALLY SHOW: Only Admins get the Manage Routes button */}
+                            {routesAccess.can_edit && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setSelectedSheetSE(se)}
+                              >
+                                Manage Routes
+                              </Button>
+                            )}
+
+                          </div>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                 })
@@ -260,6 +282,11 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         onEditRoute={openEditDialog}
         onUnassignRoute={handleUnassignRoute}
         canEdit={routesAccess.can_edit}
+      />
+      <TerritoryViewSheet 
+        se={selectedViewSE}
+        open={!!selectedViewSE}
+        onClose={() => setSelectedViewSE(null)}
       />
     </AppLayout>
   );

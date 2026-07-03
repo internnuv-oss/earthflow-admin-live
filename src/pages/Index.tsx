@@ -54,6 +54,7 @@ const Index = () => {
 <Route path="/expenses" element={guard(<ExpensesPage onLogout={logout} />)} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    
   );
 };
 
