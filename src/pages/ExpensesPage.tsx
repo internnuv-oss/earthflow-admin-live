@@ -25,33 +25,49 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
   const [selectedExpense, setSelectedExpense] = useState<any | null>(null);
 
   // 🚀 ON-SCREEN FILTERS
-  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedDate, setSelectedDate] = useState(''); // Specific date search
   const [selectedSE, setSelectedSE] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All'); 
+  // 🚀 ON-SCREEN FILTERS
+  
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }); // 🚀 NEW: Month filter, defaulting to current month!
   
   // 🚀 EXPORT MODAL STATES
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportMonth, setExportMonth] = useState(() => {
     const now = new Date();
+    // 🚀 Default the export modal to the CURRENT month
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [exportSE, setExportSE] = useState('All');
+  const [exportCategory, setExportCategory] = useState('All'); // New Category export filter
   const [exportLoading, setExportLoading] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 15;
 
-  // 1. Fetch Clean SE List (No Demos)
+  // 1. Fetch SE List
+  // 1. Fetch SE List (Safely grab false AND null values)
   useEffect(() => {
     if (!userId || !expenseAccess.can_view) return;
     
-    supabase.from('profiles').select('id, name').eq('role', 'SE').eq('is_demo', false).order('name')
-      .then(({ data }) => { if (data) setSeList(data); });
+    supabase
+      .from('profiles')
+      .select('id, name')
+      .eq('role', 'SE')
+      .or('is_demo.eq.false,is_demo.is.null') // 🚀 FIXED: Safely excludes true, but keeps real users!
+      .order('name')
+      .then(({ data }) => { 
+        if (data) setSeList(data); 
+      });
   }, [userId, expenseAccess.can_view]);
 
-  // 2. Fetch Expenses based on Selected Date
+  // 2. Fetch Base Expenses
   useEffect(() => {
     if (!userId || !expenseAccess.can_view) return;
 
@@ -61,69 +77,80 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
       let startDateStr, endDateStr;
 
       if (selectedDate) {
+        // If user picked a specific date, fetch exactly that day
         startDateStr = `${selectedDate}T00:00:00.000Z`;
         endDateStr = `${selectedDate}T23:59:59.999Z`;
       } else {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
+        // 🚀 NEW: Use the selectedMonth filter! (Fallback to current month if they somehow clear it)
+        const activeMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        const [year, month] = activeMonth.split('-');
+        
         startDateStr = `${year}-${month}-01T00:00:00.000Z`;
         
-        const nextMonth = new Date(year, now.getMonth() + 1, 1);
+        const nextMonth = new Date(parseInt(year), parseInt(month), 1);
         endDateStr = nextMonth.toISOString();
       }
 
-      const { data } = await supabase
+      // Fetch all records for the time window
+      const query = supabase
         .from('expenses')
         .select('*, profiles:se_id(name), shifts:shift_id(start_time, end_time, start_km, end_km, total_distance, start_odo_image, end_odo_image)') 
         .gte('date', startDateStr)
-        .lt('date', endDateStr)
+        .lt('date', endDateStr) 
         .order('date', { ascending: false });
 
-      if (data) setExpenses(data);
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Error fetching expenses:", error);
+      } else if (data) {
+        setExpenses(data);
+      }
+      
       setLoading(false);
     };
 
     fetchExpenses();
-  }, [selectedDate, userId, expenseAccess.can_view]);
+  }, [selectedDate, selectedMonth, userId, expenseAccess.can_view]); // 🚀 Added selectedMonth here
 
   // Reset pagination on filter change
-  useEffect(() => setCurrentPage(1), [selectedDate, selectedSE, statusFilter, categoryFilter]);
+  useEffect(() => setCurrentPage(1), [selectedDate, selectedMonth, selectedSE, statusFilter, categoryFilter]); // 🚀 Added selectedMonth here
 
-  // 🚀 Apply local filters (WITH CASE INSENSITIVITY AND TRIMMING)
+
+
+  // 3. Client-Side Instant Filters
+  // 3. Client-Side Instant Filters
   const filteredData = expenses.filter((exp) => {
-    const isRealSE = seList.some(se => se.id === exp.se_id);
+    // 🚀 NEW: Ensure the expense belongs to a real executive from our list!
+    // (We check length > 0 so the table doesn't flash empty while loading)
+    const isRealSE = seList.length === 0 || seList.some(se => se.id === exp.se_id);
     if (!isRealSE) return false;
 
     const matchesSE = selectedSE === 'All' || exp.se_id === selectedSE;
     const matchesStatus = statusFilter === 'All' || exp.status === statusFilter;
-    
-    // 🚀 BULLETPROOF CATEGORY FILTER
     const matchesCategory = categoryFilter === 'All' || 
-      (exp.category || '').trim().toLowerCase() === categoryFilter.trim().toLowerCase();
+      (exp.category || '').trim().toLowerCase() === categoryFilter.toLowerCase();
     
     return matchesSE && matchesStatus && matchesCategory;
   });
-
-  // 🚀 Clean, combine, and capitalize categories for the dropdown
-  // 🚀 Clean and combine categories safely
-  const predefinedCategories = ['Travelling', 'Food', 'Misc', 'TA/DA'];
-  const fetchedCategories = expenses
-    .filter(exp => seList.some(se => se.id === exp.se_id))
-    .map(e => (e.category || '').trim()); // Just take the raw word exactly as the DB has it
-
-  // Remove exact duplicates and sort
-  const uniqueCategories = Array.from(new Set([...predefinedCategories, ...fetchedCategories]))
-    .filter(Boolean)
-    .sort();
   
 
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE) || 1;
   const paginatedData = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleExpenseUpdate = (id: string, newStatus: string) => {
-    setExpenses(prev => prev.map(exp => exp.id === id ? { ...exp, status: newStatus } : exp));
-    if (selectedExpense) setSelectedExpense({ ...selectedExpense, status: newStatus });
+  const handleExpenseUpdate = (id: string, newStatus: string, newAmount?: number) => {
+    setExpenses(prev => prev.map(exp => 
+      exp.id === id 
+        ? { ...exp, status: newStatus, amount: newAmount !== undefined ? newAmount : exp.amount } 
+        : exp
+    ));
+    if (selectedExpense) {
+      setSelectedExpense({ 
+        ...selectedExpense, 
+        status: newStatus, 
+        amount: newAmount !== undefined ? newAmount : selectedExpense.amount 
+      });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -136,6 +163,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     return <Badge variant="outline" className={styles[status] || 'bg-muted'}>{status}</Badge>;
   };
 
+  // 🚀 ADVANCED CSV EXPORT (By Month, SE, and Category)
   const executeExport = async () => {
     setExportLoading(true);
 
@@ -154,6 +182,10 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     if (exportSE !== 'All') {
       query = query.eq('se_id', exportSE);
     }
+    
+    if (exportCategory !== 'All') {
+      query = query.eq('category', exportCategory);
+    }
 
     const { data, error } = await query;
     setExportLoading(false);
@@ -162,10 +194,11 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
       return toast({ title: 'Export Failed', description: error?.message, variant: 'destructive' });
     }
 
+    // Filter out deleted/demo users from the export
     const cleanData = data.filter(exp => seList.some(se => se.id === exp.se_id));
 
     if (cleanData.length === 0) {
-      return toast({ title: 'No Data', description: 'No expenses found for this month/SE.' });
+      return toast({ title: 'No Data', description: 'No expenses found for these exact filters.' });
     }
 
     const headers = ['Date', 'Executive Name', 'Category', 'Amount (INR)', 'Status', 'Remarks'];
@@ -189,7 +222,9 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     link.href = url;
     
     const seName = exportSE === 'All' ? 'All_SEs' : seList.find(s => s.id === exportSE)?.name?.replace(/\s+/g, '_');
-    link.download = `Expense_Report_${exportMonth}_${seName}.csv`;
+    const catName = exportCategory === 'All' ? 'All_Cats' : exportCategory.replace(/[^a-zA-Z0-9]/g, '');
+    
+    link.download = `Expenses_${exportMonth}_${seName}_${catName}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
     setIsExportOpen(false);
@@ -218,7 +253,11 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Receipt className="h-5 w-5 text-primary" /> Travel & Expenses
             </h2>
-            <p className="text-sm text-muted-foreground">Manage and reimburse field executive expenses.</p>
+            <p className="text-sm text-muted-foreground">
+              {selectedDate 
+                ? `Showing records for ${new Date(selectedDate).toLocaleDateString()}` 
+                : `Showing records for ${new Date(selectedMonth + '-01').toLocaleDateString([], { month: 'long', year: 'numeric' })}`}
+            </p>
           </div>
 
           <Button 
@@ -230,6 +269,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
           </Button>
         </div>
 
+        {/* Filters Bar */}
         <div className="bg-card border rounded-lg p-3 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto flex-wrap">
             
@@ -240,6 +280,21 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="pl-9 h-9 min-w-[150px]"
+                title="Search by specific date (Overrides default month)"
+              />
+            </div>
+
+            <div className="relative flex items-center w-full sm:w-auto">
+              <CalendarIcon className="absolute left-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setSelectedDate(''); // 🚀 Clear specific date if they pick a whole month
+                }}
+                className="pl-9 h-9 min-w-[150px]"
+                title="Search by month"
               />
             </div>
             
@@ -265,9 +320,10 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
                 className="flex h-9 w-full min-w-[150px] items-center justify-between rounded-md border border-input bg-transparent pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="All">All Categories</option>
-                {uniqueCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
+                <option value="TA/DA">TA/DA</option>
+                <option value="Travelling">Travelling</option>
+                <option value="Food">Food</option>
+                <option value="Misc">Misc</option>
               </select>
             </div>
           </div>
@@ -285,6 +341,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
           </div>
         </div>
 
+        {/* Data Table */}
         <div className="bg-card border rounded-lg shadow-sm flex flex-col overflow-hidden">
           <div className="overflow-x-auto">
             {loading ? (
@@ -334,12 +391,10 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
           {!loading && filteredData.length > 0 && (
             <div className="flex flex-col md:flex-row items-center justify-between px-4 py-3 border-t bg-muted/20 gap-4">
               
-              {/* Left: Entry Count */}
               <div className="text-xs text-muted-foreground font-medium w-full md:w-auto text-center md:text-left">
                 Showing <span className="text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)}</span> of <span className="text-foreground">{filteredData.length}</span> entries
               </div>
 
-              {/* 🚀 CENTER: The Dynamic Total Amount */}
               <div className="flex items-center gap-2 bg-primary/10 text-primary px-4 py-1.5 rounded-md border border-primary/20 shadow-sm">
                 <span className="text-xs font-bold uppercase tracking-wider">Filtered Total:</span>
                 <span className="text-sm font-extrabold">
@@ -347,7 +402,6 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
                 </span>
               </div>
 
-              {/* Right: Pagination Controls */}
               <div className="flex items-center gap-2 w-full md:w-auto justify-center md:justify-end">
                 <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
                 <div className="text-xs font-semibold px-2">Page {currentPage} of {totalPages}</div>
@@ -359,12 +413,13 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
         </div>
       </div>
 
+      {/* Export CSV Modal */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Export Expenses to CSV</DialogTitle>
             <DialogDescription>
-              Select the month and executive to download their expense records.
+              Filter the exact records you want to download.
             </DialogDescription>
           </DialogHeader>
           
@@ -390,6 +445,21 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
                 {seList.map(se => (
                   <option key={se.id} value={se.id}>{se.name}</option>
                 ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">Select Category *</label>
+              <select
+                value={exportCategory}
+                onChange={(e) => setExportCategory(e.target.value)}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="All">All Categories</option>
+                <option value="TA/DA">TA/DA</option>
+                <option value="Travelling">Travelling</option>
+                <option value="Food">Food</option>
+                <option value="Misc">Misc</option>
               </select>
             </div>
           </div>
