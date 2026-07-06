@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Map, MapPin, Users, UserCircle, Loader2 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { 
+  ChevronLeft, ChevronRight, Map as MapIcon, MapPin, Users, UserCircle, 
+  Loader2, AlertCircle, TrendingUp, LayoutDashboard
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import FarmerDetailSheet from './FarmerDetailSheet';
+
 
 interface Props {
   se: any | null;
@@ -15,18 +20,167 @@ interface Props {
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
+// 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
+// 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
+const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
+  
+    // Helper to compute all metrics for a single column (Route or Village)
+    const computeMetrics = (farmers: any[], villageCount: number) => {
+      if (!farmers || farmers.length === 0) {
+        return {
+          villageCount, totalFarmers: 0, completed: 0, drafts: 0, fsppCount: 0, avgScore: 0,
+          totalLand: '0', committedLand: '0', avgLand: '0', topCrops: '—', topSoils: '—',
+          primaryStage: '—', lastVisited: '—'
+        };
+      }
+  
+      const totalFarmers = farmers.length;
+      const completed = farmers.filter(f => !f.is_draft).length;
+      const drafts = farmers.filter(f => f.is_draft).length;
+      const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
+      
+      const avgScore = fspp.length > 0 
+        ? Math.round(fspp.reduce((sum, f) => sum + Number(f.fspp_details?.score || 0), 0) / fspp.length) 
+        : 0;
+  
+      const farmersWithLand = farmers.filter(f => Number(f.farm_details?.totalLand || 0) > 0);
+      const totalLand = farmersWithLand.reduce((sum, f) => sum + Number(f.farm_details?.totalLand || 0), 0);
+      const committedLand = fspp.reduce((sum, f) => sum + Number(f.fspp_details?.committedLand || 0), 0);
+      const avgLand = farmersWithLand.length > 0 ? (totalLand / farmersWithLand.length).toFixed(1) : '0';
+  
+      const cropMap = new Map();
+      let cropTotal = 0;
+      
+      const soilMap = new Map();
+      let soilTotal = 0;
+      
+      farmers.forEach(f => {
+        (f.farm_details?.majorCrops || []).forEach((c: string) => {
+          cropMap.set(c, (cropMap.get(c) || 0) + 1);
+          cropTotal++;
+        });
+        (f.farm_details?.soilType || []).forEach((s: string) => {
+          soilMap.set(s, (soilMap.get(s) || 0) + 1);
+          soilTotal++;
+        });
+      });
+      
+      // 🚀 NEW: Dynamic All Crops with Percentage Breakdown
+      const topCrops = cropTotal > 0
+        ? Array.from(cropMap.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(e => `${e[0]} (${Math.round((e[1]/cropTotal)*100)}%)`)
+            .join(', ')
+        : '—';
+  
+      const topSoils = soilTotal > 0 
+        ? Array.from(soilMap.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 2)
+            .map(e => `${e[0]} (${Math.round((e[1]/soilTotal)*100)}%)`)
+            .join(', ') 
+        : '—';
+  
+      const dates = farmers.map(f => new Date(f.updated_at || f.created_at).getTime()).filter(t => !isNaN(t));
+      const lastVisited = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  
+      // 🚀 NEW: Dynamic All Biofertilizer Stages with Percentage Breakdown
+      const bioMap = new Map();
+      let bioTotal = 0;
+      
+      farmers.forEach(f => {
+        const stage = f.farm_details?.biofertilizer || f.fspp_details?.statusLabel || 'Unknown';
+        bioMap.set(stage, (bioMap.get(stage) || 0) + 1);
+        bioTotal++;
+      });
+      
+      const primaryStage = bioTotal > 0
+        ? Array.from(bioMap.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(e => `${e[0]} (${Math.round((e[1]/bioTotal)*100)}%)`)
+            .join(', ')
+        : '—';
+  
+      return {
+        villageCount, totalFarmers, completed, drafts, fsppCount: fspp.length, avgScore,
+        totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
+        topCrops, topSoils, primaryStage, lastVisited
+      };
+    };
+  
+    // Generate column data mapping
+    const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
+  
+    // The exact rows requested
+    const rows = [
+      { label: "Number of Villages", key: "villageCount" },
+      { label: "Number of Farmers", key: "totalFarmers" },
+      { label: "Completed Profile Farmer", key: "completed" },
+      { label: "Draft Farmer", key: "drafts" },
+      { label: "FSPP Enrolled Farmer", key: "fsppCount" },
+      { label: "Average Score", key: "avgScore" },
+      { label: "Total Land (Acres)", key: "totalLand" },
+      { label: "Committed Land for Bio", key: "committedLand" },
+      { label: "Average Land/Farmer (Acres)", key: "avgLand" },
+      { label: "Major Crops", key: "topCrops" },
+      { label: "Soil Type & %", key: "topSoils" },
+      { label: "Biofertilizer Stage", key: "primaryStage" },
+      { label: "Last Visited on", key: "lastVisited" }
+    ];
+  
+    if (entities.length === 0) {
+      return <div className="text-sm italic text-muted-foreground p-4 text-center">No data available to display.</div>;
+    }
+  
+    return (
+      <div className="grid grid-cols-1 max-w-full w-full bg-white border rounded-lg shadow-sm animate-in fade-in duration-500 overflow-hidden">
+        <div className="w-full overflow-x-auto custom-scrollbar"> 
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="bg-muted border-b">
+              <tr>
+                {/* STICKY FIRST COLUMN */}
+                <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap sticky left-0 bg-muted z-20 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
+                  Metrics
+                </th>
+                {entities.map((e, i) => (
+                  <th key={i} className="px-4 py-3 font-bold text-foreground whitespace-nowrap min-w-[180px] text-center border-r last:border-r-0">
+                    {e.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((row, i) => (
+                <tr key={i} className="hover:bg-muted/10 transition-colors">
+                  {/* STICKY ROW LABEL */}
+                  <td className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-white z-10 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
+                    {row.label}
+                  </td>
+                  {columnData.map((data, colIdx) => (
+                    <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 font-medium text-foreground/90 
+                      ${['topCrops', 'topSoils', 'primaryStage'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : 'whitespace-nowrap'}`}
+                    >
+                      {data[row.key as keyof typeof data]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
 export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   const [level, setLevel] = useState<ViewLevel>('routes');
   const [activeRoute, setActiveRoute] = useState<any | null>(null);
   const [activeVillage, setActiveVillage] = useState<string | null>(null);
-  
+  const [displayRoutes, setDisplayRoutes] = useState<any[]>([]);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // For opening the final profile
   const [selectedFarmer, setSelectedFarmer] = useState<any | null>(null);
 
-  // Reset state when opened/closed
   useEffect(() => {
     if (open && se) {
       setLevel('routes');
@@ -36,100 +190,94 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     }
   }, [open, se]);
 
-  // Fetch all farmers that belong to any village in this SE's routes
-  // Fetch all farmers that belong to any village in this SE's routes (Both Submitted & Drafts)
   const fetchAllFarmersInTerritory = async () => {
-    if (!se || !se.routes || se.routes.length === 0) return;
+    if (!se) return;
     setLoading(true);
 
-    const allVillages = new Set<string>();
-    se.routes.forEach((route: any) => {
+    const officialVillages = new Set<string>();
+    (se.routes || []).forEach((route: any) => {
       route.locations?.forEach((loc: any) => {
-        loc.villages?.forEach((v: string) => allVillages.add(v.trim().toLowerCase()));
+        loc.villages?.forEach((v: string) => officialVillages.add(v.trim().toLowerCase()));
       });
     });
 
-    // 🚀 NEW: Fetch both Tables at the same time
     const [farmersRes, draftsRes] = await Promise.all([
-      supabase.from('farmers').select('*, profiles:se_id(name)').eq('status', 'SUBMITTED'),
-      supabase.from('drafts').select('*, profiles:se_id(name)').eq('entity_type', 'farmer')
+      supabase.from('farmers').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('status', 'SUBMITTED'),
+      supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer')
     ]);
 
     const submittedFarmers = farmersRes.data || [];
-    
-    // 🚀 NEW: Reshape the Draft data to look exactly like a normal Farmer record
-    // 🚀 NEW: Reshape the FLAT Draft JSON into the NESTED Completed Profile structure
     const draftFarmers = (draftsRes.data || []).map(draft => {
         const data = draft.draft_data as any; 
-        
         return {
           id: draft.entity_id || draft.id,
           status: 'DRAFT',
           is_draft: true,
-          // Notice the draft uses 'fullName' instead of 'full_name'
           full_name: data?.fullName || data?.full_name || 'Unnamed Draft', 
           mobile: data?.mobile || 'No Mobile',
           village: data?.village || '',
-          
-          // 🚀 MANUALLY BUILD THE COMPLETED TEMPLATE FROM FLAT DRAFT DATA
-          personal_details: {
-            village: data?.village || '',
-            taluka: data?.taluka || '',
-            city: data?.city || '',
-            state: data?.state || '',
-            pincode: data?.pincode || '',
-            fatherName: data?.fatherName || '',
-            alternateMobile: data?.alternateMobile || ''
-          },
+          created_at: draft.created_at,
+          updated_at: draft.updated_at,
+          fspp_details: data?.fspp_details || {},
+          personal_details: { village: data?.village || '' },
           farm_details: {
-            totalLand: data?.totalLand || '',
-            landUnit: data?.landUnit || 'Acres',
-            irrigatedLand: data?.irrigatedLand || '',
-            rainFedLand: data?.rainFedLand || '',
+            totalLand: data?.totalLand || 0,
             majorCrops: data?.majorCrops || [],
             soilType: data?.soilType || [],
-            waterSource: data?.waterSource || [],
-            irrigationType: data?.irrigationType || [],
-            farmEquipments: data?.farmEquipments || [],
-            cattles: data?.cattles || [],
-            sideTrees: data?.sideTrees || [],
-            biofertilizer: data?.biofertilizer || '',
-            isIntercropping: data?.isIntercropping || ''
-          },
-          history_details: {
-            pastCrops: data?.pastCrops || []
+            biofertilizer: data?.biofertilizer || ''
           },
           profiles: draft.profiles
         };
       });
-    // Combine them both
-    const combinedData = [...submittedFarmers, ...draftFarmers];
 
-    // Filter locally to match the villages in this territory route
-    const matchedFarmers = combinedData.filter(f => {
-      const v = (f.village || (f.personal_details as any)?.village || '').trim().toLowerCase();
-      return allVillages.has(v);
+    const combinedData = [...submittedFarmers, ...draftFarmers];
+    setFarmers(combinedData);
+
+    const orphanVillagesMap = new Map();
+    combinedData.forEach(f => {
+      const v = (f.village || (f.personal_details as any)?.village || '').trim();
+      if (v && !officialVillages.has(v.toLowerCase())) {
+        orphanVillagesMap.set(v.toLowerCase(), v);
+      }
     });
 
-    setFarmers(matchedFarmers);
+    if (orphanVillagesMap.size > 0) {
+      const othersRoute = {
+        id: 'others-custom-route',
+        name: 'Others (Out of Route)',
+        is_custom_others: true,
+        locations: [{ villages: Array.from(orphanVillagesMap.values()) }]
+      };
+      setDisplayRoutes([...(se.routes || []), othersRoute]);
+    } else {
+      setDisplayRoutes(se.routes || []);
+    }
+
     setLoading(false);
   };
 
-  // 🚀 HELPER: Count farmers in a specific village safely
-  const getFarmerCountForVillage = (villageName: string) => {
-    const vSafe = villageName.trim().toLowerCase();
-    return farmers.filter(f => (f.village || (f.personal_details as any)?.village || '').trim().toLowerCase() === vSafe).length;
+  const getVillageCountForRoute = (route: any) => {
+    if (route.is_custom_others) return route.locations[0].villages.length;
+    let count = 0;
+    route.locations?.forEach((loc: any) => { count += (loc.villages?.length || 0); });
+    return count;
   };
 
-  // 🚀 HELPER: Count farmers in an entire route
-  const getFarmerCountForRoute = (route: any) => {
-    let count = 0;
-    route.locations?.forEach((loc: any) => {
-      loc.villages?.forEach((v: string) => {
-        count += getFarmerCountForVillage(v);
-      });
-    });
-    return count;
+  const getFarmersForVillage = (villageName: string) => {
+    const vSafe = villageName.trim().toLowerCase();
+    return farmers.filter(f => (f.village || (f.personal_details as any)?.village || '').trim().toLowerCase() === vSafe);
+  };
+
+  const getFarmersForRoute = (route: any) => {
+    let routeFarmers: any[] = [];
+    if (route.is_custom_others) {
+        route.locations[0].villages.forEach((v: string) => { routeFarmers = [...routeFarmers, ...getFarmersForVillage(v)]; });
+    } else {
+        route.locations?.forEach((loc: any) => {
+          loc.villages?.forEach((v: string) => { routeFarmers = [...routeFarmers, ...getFarmersForVillage(v)]; });
+        });
+    }
+    return routeFarmers;
   };
 
   if (!se) return null;
@@ -137,136 +285,159 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+      <SheetContent 
+  side="right" 
+  className="w-full sm:max-w-[92vw] flex flex-col p-0 border-l-0 shadow-2xl transition-all duration-300"
+>
           
-          <SheetHeader className="px-6 py-4 border-b bg-muted/30">
+          <SheetHeader className="px-6 py-4 border-b bg-muted/10">
             <div className="flex items-center gap-3">
               {level !== 'routes' && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => {
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0 rounded-full" onClick={() => {
                   if (level === 'farmers') setLevel('villages');
                   else if (level === 'villages') { setLevel('routes'); setActiveRoute(null); }
                 }}>
                   <ChevronLeft className="h-5 w-5" />
                 </Button>
               )}
-              <div>
-                <SheetTitle className="text-lg flex items-center gap-2">
-                  {level === 'routes' && <><Map className="h-5 w-5 text-primary" /> {se.name}'s Territories</>}
-                  {level === 'villages' && <><MapPin className="h-5 w-5 text-primary" /> {activeRoute?.name}</>}
-                  {level === 'farmers' && <><Users className="h-5 w-5 text-primary" /> Farmers in {activeVillage}</>}
+              <div className="flex-1 min-w-0">
+                <SheetTitle className="text-lg flex items-center gap-2 truncate">
+                  {level === 'routes' && <><LayoutDashboard className="h-5 w-5 text-primary" /> {se.name}</>}
+                  {level === 'villages' && <><MapIcon className="h-5 w-5 text-primary" /> {activeRoute?.name}</>}
+                  {level === 'farmers' && <><MapPin className="h-5 w-5 text-primary" /> {activeVillage}</>}
                 </SheetTitle>
-                <SheetDescription>
-                  {level === 'routes' && 'Select a route to view its villages.'}
-                  {level === 'villages' && 'Select a village to view enrolled farmers.'}
-                  {level === 'farmers' && 'Click a farmer card to view their full dossier.'}
-                </SheetDescription>
               </div>
             </div>
           </SheetHeader>
 
-          <ScrollArea className="flex-1 px-6 py-4 bg-muted/10">
+          <ScrollArea className="flex-1 bg-muted/5">
             {loading ? (
-              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary/40" /></div>
             ) : (
-              <div className="space-y-3">
+              <div className="px-6 py-4">
                 
-                {/* LEVEL 1: ROUTES */}
+                {/* 🚀 LEVEL 1: ROUTES */}
                 {level === 'routes' && (
-                  se.routes.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground italic">No routes assigned to this executive.</div>
-                  ) : (
-                    se.routes.map((route: any) => {
-                      const count = getFarmerCountForRoute(route);
-                      return (
-                        <div 
-                          key={route.id} 
-                          onClick={() => { setActiveRoute(route); setLevel('villages'); }}
-                          className="flex items-center justify-between p-4 bg-card border rounded-lg shadow-sm cursor-pointer hover:border-primary transition-colors group"
+                  <Tabs defaultValue="list" className="w-full">
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4">
+                      <TabsTrigger value="list" className="flex-1 gap-2"><MapIcon className="h-4 w-4" /> Route List</TabsTrigger>
+                      <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="list" className="space-y-3 outline-none">
+                      {displayRoutes.map((route: any) => {
+                        const count = getVillageCountForRoute(route);
+                        const fCount = getFarmersForRoute(route).length;
+                        return (
+                          <div key={route.id} onClick={() => { setActiveRoute(route); setLevel('villages'); }}
+                            className={`flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm cursor-pointer hover:border-primary transition-all active:scale-[0.98] ${route.is_custom_others ? 'border-amber-200 bg-amber-50/20' : ''}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${route.is_custom_others ? 'bg-amber-100' : 'bg-primary/10'}`}>
+                                {route.is_custom_others ? <AlertCircle className="h-5 w-5 text-amber-600" /> : <MapIcon className="h-5 w-5 text-primary" />}
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-sm">{route.name}</h4>
+                                <p className="text-[11px] text-muted-foreground flex items-center gap-2">
+                                    <span>{count} Villages</span>
+                                </p>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="font-bold bg-muted/50">{fCount} Farmers</Badge>
+                          </div>
+                        );
+                      })}
+                    </TabsContent>
+                    
+                    {/* 🚀 LEVEL 1 ANALYTICS: Dynamic columns for every Route */}
+                    <TabsContent value="analytics" className="outline-none">
+                      <AnalyticsTable 
+                        entities={displayRoutes.map(route => ({
+                          name: route.name,
+                          farmers: getFarmersForRoute(route),
+                          villageCount: getVillageCountForRoute(route)
+                        }))} 
+                      />
+                    </TabsContent>
+                  </Tabs>
+                )}
+
+                {/* 🚀 LEVEL 2: VILLAGES */}
+                {level === 'villages' && activeRoute && (
+                  <Tabs defaultValue="list" className="w-full">
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4">
+                      <TabsTrigger value="list" className="flex-1 gap-2"><MapPin className="h-4 w-4" /> Village List</TabsTrigger>
+                      <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
+                    </TabsList>
+                    
+                    {/* 🚀 LEVEL 2 ANALYTICS: Dynamic columns for every Village in this route */}
+                    <TabsContent value="analytics" className="outline-none">
+                      <AnalyticsTable 
+                        entities={(activeRoute.locations?.flatMap((loc: any) => loc.villages || []) || []).map((v: string) => ({
+                          name: v,
+                          farmers: getFarmersForVillage(v),
+                          villageCount: 1
+                        }))} 
+                      />
+                    </TabsContent>
+
+                    <TabsContent value="list" className="space-y-3 outline-none">
+                      {activeRoute.locations?.flatMap((loc: any) => loc.villages || []).map((v: string, i: number) => {
+                        const fCount = getFarmersForVillage(v).length;
+                        return (
+                          <div key={i} onClick={() => { setActiveVillage(v); setLevel('farmers'); }}
+                            className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm cursor-pointer hover:border-primary transition-all"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="h-8 w-8 bg-amber-100 rounded-lg flex items-center justify-center text-amber-700 font-bold text-xs">{v.charAt(0)}</div>
+                              <h4 className="font-bold text-sm">{v}</h4>
+                            </div>
+                            <Badge variant="secondary" className="font-bold">{fCount} Farmers</Badge>
+                          </div>
+                        );
+                      })}
+                    </TabsContent>
+                  </Tabs>
+                )}
+
+                {/* 🚀 LEVEL 3: FARMERS */}
+                {level === 'farmers' && activeVillage && (
+                  <Tabs defaultValue="list" className="w-full">
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4">
+                      <TabsTrigger value="list" className="flex-1 gap-2"><Users className="h-4 w-4" /> Farmer List</TabsTrigger>
+                      <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
+                    </TabsList>
+                    
+                    {/* 🚀 LEVEL 3 ANALYTICS: A single column for the selected village */}
+                    <TabsContent value="analytics" className="outline-none">
+                      <AnalyticsTable 
+                        entities={[{
+                          name: activeVillage,
+                          farmers: getFarmersForVillage(activeVillage),
+                          villageCount: 1
+                        }]} 
+                      />
+                    </TabsContent>
+
+                    <TabsContent value="list" className="space-y-3 outline-none">
+                      {getFarmersForVillage(activeVillage).map((farmer: any) => (
+                        <div key={farmer.id} onClick={() => setSelectedFarmer(farmer)}
+                          className={`flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm cursor-pointer transition-all ${farmer.is_draft ? 'border-amber-200 bg-amber-50/10' : ''}`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-                              <Map className="h-5 w-5 text-primary" />
-                            </div>
+                            <UserCircle className={`h-10 w-10 ${farmer.is_draft ? 'text-amber-400' : 'text-primary/20'}`} />
                             <div>
-                              <h4 className="font-bold text-sm">{route.name}</h4>
-                              <p className="text-xs text-muted-foreground mt-0.5">{route.locations?.length || 0} Blocks</p>
+                                <h4 className="font-bold text-sm flex items-center gap-2">
+                                  {farmer.full_name} {farmer.is_draft && <Badge variant="outline" className="text-[8px] h-4 bg-amber-100 border-amber-300">DRAFT</Badge>}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">{farmer.mobile}</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <span className="block text-lg font-bold text-foreground leading-none">{count}</span>
-                              <span className="text-[10px] uppercase text-muted-foreground font-semibold tracking-wider">Farmers</span>
-                            </div>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
-                      );
-                    })
-                  )
-                )}
-
-                {/* LEVEL 2: VILLAGES */}
-                {level === 'villages' && activeRoute && (
-                  activeRoute.locations?.flatMap((loc: any) => loc.villages || []).map((villageName: string, i: number) => {
-                    const count = getFarmerCountForVillage(villageName);
-                    return (
-                      <div 
-                        key={i}
-                        onClick={() => { setActiveVillage(villageName); setLevel('farmers'); }}
-                        className="flex items-center justify-between p-4 bg-card border rounded-lg shadow-sm cursor-pointer hover:border-primary transition-colors group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 bg-amber-100 rounded-full flex items-center justify-center">
-                            <MapPin className="h-4 w-4 text-amber-700" />
-                          </div>
-                          <h4 className="font-semibold text-sm">{villageName}</h4>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Badge variant="secondary" className="font-bold">{count} Farmers</Badge>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-
-                {/* LEVEL 3: FARMERS */}
-                {/* LEVEL 3: FARMERS */}
-                {level === 'farmers' && activeVillage && (
-                  (() => {
-                    const villageFarmers = farmers.filter(f => (f.village || (f.personal_details as any)?.village || '').trim().toLowerCase() === activeVillage.trim().toLowerCase());
-                    
-                    if (villageFarmers.length === 0) return <div className="text-center py-12 text-muted-foreground italic">No farmers enrolled in this village yet.</div>;
-
-                    return villageFarmers.map((farmer: any) => (
-                      <div 
-                        key={farmer.id}
-                        onClick={() => setSelectedFarmer(farmer)}
-                        className={`flex items-center justify-between p-4 bg-card border rounded-lg shadow-sm cursor-pointer transition-colors ${farmer.is_draft ? 'hover:border-amber-400 border-amber-200 bg-amber-50/30' : 'hover:border-primary'}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <UserCircle className={`h-10 w-10 ${farmer.is_draft ? 'text-amber-500/50' : 'text-muted-foreground/50'}`} />
-                          <div>
-                          <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-sm truncate max-w-[140px] sm:max-w-[200px]" title={farmer.full_name}>
-                                {farmer.full_name}
-                              </h4>
-                              {/* 🚀 NEW: Draft Badge */}
-                              {farmer.is_draft && (
-                                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-[9px] px-1.5 py-0">
-                                  DRAFT
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">{farmer.mobile}</p>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className={farmer.is_draft ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-green-50 text-green-700 border-green-200"}>
-                          View Profile
-                        </Badge>
-                      </div>
-                    ));
-                  })()
+                      ))}
+                    </TabsContent>
+                  </Tabs>
                 )}
 
               </div>
@@ -275,13 +446,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
         </SheetContent>
       </Sheet>
 
-      {/* 🚀 LEVEL 4: THE ACTUAL FARMER DOSSIER */}
-      <FarmerDetailSheet 
-        farmer={selectedFarmer}
-        open={!!selectedFarmer}
-        onClose={() => setSelectedFarmer(null)}
-        canEdit={false} // Force read-only from this view to keep it safe!
-      />
+      <FarmerDetailSheet farmer={selectedFarmer} open={!!selectedFarmer} onClose={() => setSelectedFarmer(null)} canEdit={false} />
     </>
   );
 };

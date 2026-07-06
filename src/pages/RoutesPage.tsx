@@ -198,32 +198,30 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{totalVillages} Villages</td>
                       <td className="px-6 py-4 text-right">
-                        {se.routes.length > 0 ? (
-                          <div className="flex items-center justify-end gap-2">
-                            
-                            {/* 🚀 1. ALWAYS SHOW: Everyone gets the View Territories drill-down */}
+                        <div className="flex items-center justify-end gap-2">
+                          
+                          {/* 🚀 1. TRULY ALWAYS SHOW: Even if they have 0 routes assigned! */}
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-primary hover:text-primary border-primary/20 bg-primary/5"
+                            onClick={() => setSelectedViewSE(se)}
+                          >
+                            View Territories
+                          </Button>
+
+                          {/* 🚀 2. CONDITIONALLY SHOW: Only Admins get the Manage Routes button */}
+                          {routesAccess.can_edit && (
                             <Button 
-                              variant="outline" 
+                              variant="ghost" 
                               size="sm" 
-                              className="text-primary hover:text-primary border-primary/20 bg-primary/5"
-                              onClick={() => setSelectedViewSE(se)}
+                              onClick={() => setSelectedSheetSE(se)}
                             >
-                              View Territories
+                              Manage Routes
                             </Button>
+                          )}
 
-                            {/* 🚀 2. CONDITIONALLY SHOW: Only Admins get the Manage Routes button */}
-                            {routesAccess.can_edit && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => setSelectedSheetSE(se)}
-                              >
-                                Manage Routes
-                              </Button>
-                            )}
-
-                          </div>
-                        ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
