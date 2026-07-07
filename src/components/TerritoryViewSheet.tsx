@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
   ChevronLeft, ChevronRight, Map as MapIcon, MapPin, Users, UserCircle, 
-  Loader2, AlertCircle, TrendingUp, LayoutDashboard
+  Loader2, AlertCircle, TrendingUp, LayoutDashboard, Download
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -24,126 +24,191 @@ type ViewLevel = 'routes' | 'villages' | 'farmers';
 // 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
 const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
   
-    // Helper to compute all metrics for a single column (Route or Village)
-    const computeMetrics = (farmers: any[], villageCount: number) => {
-      if (!farmers || farmers.length === 0) {
-        return {
-          villageCount, totalFarmers: 0, completed: 0, drafts: 0, fsppCount: 0, avgScore: 0,
-          totalLand: '0', committedLand: '0', avgLand: '0', topCrops: '—', topSoils: '—',
-          primaryStage: '—', lastVisited: '—'
-        };
-      }
-  
-      const totalFarmers = farmers.length;
-      const completed = farmers.filter(f => !f.is_draft).length;
-      const drafts = farmers.filter(f => f.is_draft).length;
-      const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
-      
-      const avgScore = fspp.length > 0 
-        ? Math.round(fspp.reduce((sum, f) => sum + Number(f.fspp_details?.score || 0), 0) / fspp.length) 
-        : 0;
-  
-      const farmersWithLand = farmers.filter(f => Number(f.farm_details?.totalLand || 0) > 0);
-      const totalLand = farmersWithLand.reduce((sum, f) => sum + Number(f.farm_details?.totalLand || 0), 0);
-      const committedLand = fspp.reduce((sum, f) => sum + Number(f.fspp_details?.committedLand || 0), 0);
-      const avgLand = farmersWithLand.length > 0 ? (totalLand / farmersWithLand.length).toFixed(1) : '0';
-  
-      const cropMap = new Map();
-      let cropTotal = 0;
-      
-      const soilMap = new Map();
-      let soilTotal = 0;
-      
-      farmers.forEach(f => {
-        (f.farm_details?.majorCrops || []).forEach((c: string) => {
-          cropMap.set(c, (cropMap.get(c) || 0) + 1);
-          cropTotal++;
-        });
-        (f.farm_details?.soilType || []).forEach((s: string) => {
-          soilMap.set(s, (soilMap.get(s) || 0) + 1);
-          soilTotal++;
-        });
-      });
-      
-      // 🚀 NEW: Dynamic All Crops with Percentage Breakdown
-      const topCrops = cropTotal > 0
-        ? Array.from(cropMap.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(e => `${e[0]} (${Math.round((e[1]/cropTotal)*100)}%)`)
-            .join(', ')
-        : '—';
-  
-      const topSoils = soilTotal > 0 
-        ? Array.from(soilMap.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 2)
-            .map(e => `${e[0]} (${Math.round((e[1]/soilTotal)*100)}%)`)
-            .join(', ') 
-        : '—';
-  
-      const dates = farmers.map(f => new Date(f.updated_at || f.created_at).getTime()).filter(t => !isNaN(t));
-      const lastVisited = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-  
-      // 🚀 NEW: Dynamic All Biofertilizer Stages with Percentage Breakdown
-      const bioMap = new Map();
-      let bioTotal = 0;
-      
-      farmers.forEach(f => {
-        const stage = f.farm_details?.biofertilizer || f.fspp_details?.statusLabel || 'Unknown';
-        bioMap.set(stage, (bioMap.get(stage) || 0) + 1);
-        bioTotal++;
-      });
-      
-      const primaryStage = bioTotal > 0
-        ? Array.from(bioMap.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(e => `${e[0]} (${Math.round((e[1]/bioTotal)*100)}%)`)
-            .join(', ')
-        : '—';
-  
+  // Helper to compute all metrics for a single column (Route or Village)
+  const computeMetrics = (farmers: any[], villageCount: number) => {
+    if (!farmers || farmers.length === 0) {
       return {
-        villageCount, totalFarmers, completed, drafts, fsppCount: fspp.length, avgScore,
-        totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
-        topCrops, topSoils, primaryStage, lastVisited
+        villageCount, totalFarmers: 0, completed: 0, drafts: 0, fsppCount: 0, avgScore: 0,
+        totalLand: '0', committedLand: '0', avgLand: '0', topCrops: '—', topSoils: '—',
+        primaryStage: '—', lastVisited: '—'
       };
-    };
-  
-    // Generate column data mapping
-    const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
-  
-    // The exact rows requested
-    const rows = [
-      { label: "Number of Villages", key: "villageCount" },
-      { label: "Number of Farmers", key: "totalFarmers" },
-      { label: "Completed Profile Farmer", key: "completed" },
-      { label: "Draft Farmer", key: "drafts" },
-      { label: "FSPP Enrolled Farmer", key: "fsppCount" },
-      { label: "Average Score", key: "avgScore" },
-      { label: "Total Land (Acres)", key: "totalLand" },
-      { label: "Committed Land for Bio", key: "committedLand" },
-      { label: "Average Land/Farmer (Acres)", key: "avgLand" },
-      { label: "Major Crops", key: "topCrops" },
-      { label: "Soil Type & %", key: "topSoils" },
-      { label: "Biofertilizer Stage", key: "primaryStage" },
-      { label: "Last Visited on", key: "lastVisited" }
-    ];
-  
-    if (entities.length === 0) {
-      return <div className="text-sm italic text-muted-foreground p-4 text-center">No data available to display.</div>;
     }
-  
-    return (
-      <div className="grid grid-cols-1 max-w-full w-full bg-white border rounded-lg shadow-sm animate-in fade-in duration-500 overflow-hidden">
-        <div className="w-full overflow-x-auto custom-scrollbar"> 
+
+    const totalFarmers = farmers.length;
+    const completed = farmers.filter(f => !f.is_draft).length;
+    const drafts = farmers.filter(f => f.is_draft).length;
+    const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
+    
+    const avgScore = fspp.length > 0 
+      ? Math.round(fspp.reduce((sum, f) => sum + Number(f.fspp_details?.score || 0), 0) / fspp.length) 
+      : 0;
+
+    const farmersWithLand = farmers.filter(f => Number(f.farm_details?.totalLand || 0) > 0);
+    const totalLand = farmersWithLand.reduce((sum, f) => sum + Number(f.farm_details?.totalLand || 0), 0);
+    const committedLand = fspp.reduce((sum, f) => sum + Number(f.fspp_details?.committedLand || 0), 0);
+    const avgLand = farmersWithLand.length > 0 ? (totalLand / farmersWithLand.length).toFixed(1) : '0';
+
+    const cropMap = new Map();
+    let cropTotal = 0;
+    
+    const soilMap = new Map();
+    let soilTotal = 0;
+    
+    farmers.forEach(f => {
+      (f.farm_details?.majorCrops || []).forEach((c: string) => {
+        cropMap.set(c, (cropMap.get(c) || 0) + 1);
+        cropTotal++;
+      });
+      (f.farm_details?.soilType || []).forEach((s: string) => {
+        soilMap.set(s, (soilMap.get(s) || 0) + 1);
+        soilTotal++;
+      });
+    });
+    
+    // 🚀 NEW: Dynamic All Crops with Percentage Breakdown
+    const topCrops = cropTotal > 0
+      ? Array.from(cropMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(e => `${e[0]} (${Math.round((e[1]/cropTotal)*100)}%)`)
+          .join(', ')
+      : '—';
+
+    const topSoils = soilTotal > 0 
+      ? Array.from(soilMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(e => `${e[0]} (${Math.round((e[1]/soilTotal)*100)}%)`)
+          .join(', ') 
+      : '—';
+
+    const dates = farmers.map(f => new Date(f.updated_at || f.created_at).getTime()).filter(t => !isNaN(t));
+    const lastVisited = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+    // 🚀 NEW: Dynamic All Biofertilizer Stages with Percentage Breakdown
+    const bioMap = new Map();
+    let bioTotal = 0;
+    
+    farmers.forEach(f => {
+      const stage = f.farm_details?.biofertilizer || f.fspp_details?.statusLabel || 'Unknown';
+      bioMap.set(stage, (bioMap.get(stage) || 0) + 1);
+      bioTotal++;
+    });
+    
+    const primaryStage = bioTotal > 0
+      ? Array.from(bioMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(e => `${e[0]} (${Math.round((e[1]/bioTotal)*100)}%)`)
+          .join(', ')
+      : '—';
+
+    return {
+      villageCount, totalFarmers, completed, drafts, fsppCount: fspp.length, avgScore,
+      totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
+      topCrops, topSoils, primaryStage, lastVisited
+    };
+  };
+
+  // Generate column data mapping
+  const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
+
+  // The exact rows requested
+  const rows = [
+    { label: "Number of Villages", key: "villageCount" },
+    { label: "Number of Farmers", key: "totalFarmers" },
+    { label: "Completed Profile Farmer", key: "completed" },
+    { label: "Draft Farmer", key: "drafts" },
+    { label: "FSPP Enrolled Farmer", key: "fsppCount" },
+    { label: "Average Score", key: "avgScore" },
+    { label: "Total Land (Acres)", key: "totalLand" },
+    { label: "Committed Land for Bio", key: "committedLand" },
+    { label: "Average Land/Farmer (Acres)", key: "avgLand" },
+    { label: "Major Crops", key: "topCrops" },
+    { label: "Soil Type & %", key: "topSoils" },
+    { label: "Biofertilizer Stage", key: "primaryStage" },
+    { label: "Last Visited on", key: "lastVisited" }
+  ];
+
+  // 🚀 PDF GENERATION FUNCTION (NATIVE HTML/PRINT)
+  const exportToPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const headersHtml = `<th>Metrics</th>` + entities.map(e => `<th>${e.name}</th>`).join('');
+
+    const rowsHtml = rows.map((row) => {
+      const rowDataHtml = columnData.map(data => `<td>${data[row.key as keyof typeof data]}</td>`).join('');
+      return `<tr>
+          <td><strong>${row.label}</strong></td>
+          ${rowDataHtml}
+      </tr>`;
+    }).join('');
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Territory Analytics Export</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; }
+            h2 { text-align: center; color: #333; margin-bottom: 5px; }
+            p { text-align: center; color: #666; font-size: 12px; margin-top: 0; }
+            table { border-collapse: collapse; width: 100%; font-size: 11px; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+            th { background-color: #f4f4f5; color: #333; }
+            td:first-child { text-align: left; background-color: #fafafa; white-space: nowrap; }
+            @media print {
+              @page { size: landscape; margin: 10mm; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <h2>Territory Analytics Report</h2>
+          <p>Export Date: ${new Date().toLocaleDateString()}</p>
+          <table>
+            <thead>
+              <tr>${headersHtml}</tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  if (entities.length === 0) {
+    return <div className="text-sm italic text-muted-foreground p-4 text-center">No data available to display.</div>;
+  }
+
+  return (
+    <div className="space-y-3 animate-in fade-in duration-500">
+      {/* 🚀 ACTION BAR: Download Button */}
+      <div className="flex justify-end">
+        <Button 
+          onClick={exportToPDF} 
+          size="sm" 
+          variant="outline" 
+          className="bg-primary/5 text-primary border-primary/20 hover:bg-primary/10 gap-2"
+        >
+          <Download className="h-4 w-4" /> Download PDF
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 max-w-full w-full bg-white border rounded-lg shadow-sm overflow-hidden">
+        {/* 🚀 ADDED: overflow-y-auto and max-h-[65vh] for vertical scrolling */}
+        <div className="w-full overflow-x-auto overflow-y-auto max-h-[65vh] custom-scrollbar"> 
           <table className="w-full text-sm text-left border-collapse">
-            <thead className="bg-muted border-b">
+            <thead className="bg-muted border-b sticky top-0 z-20">
               <tr>
-                {/* STICKY FIRST COLUMN */}
-                <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap sticky left-0 bg-muted z-20 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
+                {/* 🚀 STICKY FIRST COLUMN AND FIRST ROW (Top Left Corner - Z-30) */}
+                <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap sticky left-0 top-0 bg-muted z-30 border-r border-b shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-border">
                   Metrics
                 </th>
                 {entities.map((e, i) => (
-                  <th key={i} className="px-4 py-3 font-bold text-foreground whitespace-nowrap min-w-[180px] text-center border-r last:border-r-0">
+                  <th key={i} className="px-4 py-3 font-bold text-foreground whitespace-nowrap min-w-[180px] text-center border-r border-b last:border-r-0 sticky top-0 bg-muted z-20 outline outline-1 outline-border">
                     {e.name}
                   </th>
                 ))}
@@ -152,7 +217,7 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
             <tbody className="divide-y">
               {rows.map((row, i) => (
                 <tr key={i} className="hover:bg-muted/10 transition-colors">
-                  {/* STICKY ROW LABEL */}
+                  {/* STICKY ROW LABEL (Left Column) */}
                   <td className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-white z-10 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
                     {row.label}
                   </td>
@@ -169,8 +234,9 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
           </table>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
 export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   const [level, setLevel] = useState<ViewLevel>('routes');
