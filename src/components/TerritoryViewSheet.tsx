@@ -20,7 +20,7 @@ interface Props {
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
-// 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
+
 // 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
 const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
   
