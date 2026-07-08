@@ -232,7 +232,11 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     }
   };
 
-  const rawEvents = Array.isArray(shift.events) ? shift.events : [];
+  // 🚀 FIXED: Filter out the duplicate standard events titled "General Visit" 
+  // since our custom purple entry handles them with much better data layout!
+  const rawEvents = (Array.isArray(shift.events) ? shift.events : [])
+    .filter((e: any) => e.title !== 'General Visit');
+
   const events = [...rawEvents, ...farmerVisits].sort((a: any, b: any) => (a.time || 0) - (b.time || 0));
 
   let odoDistance: string = '--';
