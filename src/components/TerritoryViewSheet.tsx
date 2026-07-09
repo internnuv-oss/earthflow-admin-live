@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
@@ -10,7 +10,10 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import FarmerDetailSheet from './FarmerDetailSheet';
+import { cn } from '@/lib/utils';
 
+// 🚀 IMPORT THE VISUAL PROGRESS BAR FROM YOUR TABLE FILE
+import { StageProgressBar, getFarmerStage } from './FarmerTable';
 
 interface Props {
   se: any | null;
@@ -20,11 +23,9 @@ interface Props {
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
-
 // 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
 const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
   
-  // Helper to compute all metrics for a single column (Route or Village)
   const computeMetrics = (farmers: any[], villageCount: number) => {
     if (!farmers || farmers.length === 0) {
       return {
@@ -65,7 +66,6 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
       });
     });
     
-    // 🚀 NEW: Dynamic All Crops with Percentage Breakdown
     const topCrops = cropTotal > 0
       ? Array.from(cropMap.entries())
           .sort((a, b) => b[1] - a[1])
@@ -84,7 +84,6 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     const dates = farmers.map(f => new Date(f.updated_at || f.created_at).getTime()).filter(t => !isNaN(t));
     const lastVisited = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-    // 🚀 NEW: Dynamic All Biofertilizer Stages with Percentage Breakdown
     const bioMap = new Map();
     let bioTotal = 0;
     
@@ -108,10 +107,8 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     };
   };
 
-  // Generate column data mapping
   const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
 
-  // The exact rows requested
   const rows = [
     { label: "Number of Villages", key: "villageCount" },
     { label: "Number of Farmers", key: "totalFarmers" },
@@ -128,7 +125,6 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     { label: "Last Visited on", key: "lastVisited" }
   ];
 
-  // 🚀 PDF GENERATION FUNCTION (NATIVE HTML/PRINT)
   const exportToPDF = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -185,7 +181,6 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
 
   return (
     <div className="space-y-3 animate-in fade-in duration-500">
-      {/* 🚀 ACTION BAR: Download Button */}
       <div className="flex justify-end">
         <Button 
           onClick={exportToPDF} 
@@ -198,12 +193,10 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
       </div>
 
       <div className="grid grid-cols-1 max-w-full w-full bg-white border rounded-lg shadow-sm overflow-hidden">
-        {/* 🚀 ADDED: overflow-y-auto and max-h-[65vh] for vertical scrolling */}
         <div className="w-full overflow-x-auto overflow-y-auto max-h-[65vh] custom-scrollbar"> 
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-muted border-b sticky top-0 z-20">
               <tr>
-                {/* 🚀 STICKY FIRST COLUMN AND FIRST ROW (Top Left Corner - Z-30) */}
                 <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap sticky left-0 top-0 bg-muted z-30 border-r border-b shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-border">
                   Metrics
                 </th>
@@ -217,7 +210,6 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
             <tbody className="divide-y">
               {rows.map((row, i) => (
                 <tr key={i} className="hover:bg-muted/10 transition-colors">
-                  {/* STICKY ROW LABEL (Left Column) */}
                   <td className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-white z-10 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
                     {row.label}
                   </td>
@@ -267,16 +259,28 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
       });
     });
 
-    const [farmersRes, draftsRes] = await Promise.all([
+    // 🚀 NEW: Add the Farm Cards fetch to establish absolute ground truth for the progress bar
+    const [farmersRes, draftsRes, farmCardsRes] = await Promise.all([
       supabase.from('farmers').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('status', 'SUBMITTED'),
-      supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer')
+      supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer'),
+      (supabase as any).from('farm_cards').select('farmer_id').eq('se_id', se.id)
     ]);
 
-    const submittedFarmers = farmersRes.data || [];
+    // Fast lookup Set of all farmers who have at least one farm card
+    const farmersWithCards = new Set((farmCardsRes.data || []).map((fc: any) => fc.farmer_id));
+
+    // Map through submitted farmers and attach Ground Truth card status
+    const submittedFarmers = (farmersRes.data || []).map(f => ({
+      ...f,
+      has_farm_card: farmersWithCards.has(f.id)
+    }));
+
+    // Map through drafts and attach Ground Truth card status
     const draftFarmers = (draftsRes.data || []).map(draft => {
         const data = draft.draft_data as any; 
+        const id = draft.entity_id || draft.id;
         return {
-          id: draft.entity_id || draft.id,
+          id,
           status: 'DRAFT',
           is_draft: true,
           full_name: data?.fullName || data?.full_name || 'Unnamed Draft', 
@@ -285,6 +289,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
           created_at: draft.created_at,
           updated_at: draft.updated_at,
           fspp_details: data?.fspp_details || {},
+          has_farm_card: farmersWithCards.has(id), // 🚀 Ground Truth attached!
           personal_details: { village: data?.village || '' },
           farm_details: {
             totalLand: data?.totalLand || 0,
@@ -352,9 +357,9 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent 
-  side="right" 
-  className="w-full sm:max-w-[92vw] flex flex-col p-0 border-l-0 shadow-2xl transition-all duration-300"
->
+        side="right" 
+        className="w-full sm:max-w-[92vw] flex flex-col p-0 border-l-0 shadow-2xl transition-all duration-300"
+      >
           
           <SheetHeader className="px-6 py-4 border-b bg-muted/10">
             <div className="flex items-center gap-3">
@@ -382,7 +387,6 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
             ) : (
               <div className="px-6 py-4">
                 
-                {/* 🚀 LEVEL 1: ROUTES */}
                 {level === 'routes' && (
                   <Tabs defaultValue="list" className="w-full">
                     <TabsList className="w-full bg-muted/50 p-1 mb-4">
@@ -415,7 +419,6 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       })}
                     </TabsContent>
                     
-                    {/* 🚀 LEVEL 1 ANALYTICS: Dynamic columns for every Route */}
                     <TabsContent value="analytics" className="outline-none">
                       <AnalyticsTable 
                         entities={displayRoutes.map(route => ({
@@ -428,7 +431,6 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                   </Tabs>
                 )}
 
-                {/* 🚀 LEVEL 2: VILLAGES */}
                 {level === 'villages' && activeRoute && (
                   <Tabs defaultValue="list" className="w-full">
                     <TabsList className="w-full bg-muted/50 p-1 mb-4">
@@ -436,7 +438,6 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
                     </TabsList>
                     
-                    {/* 🚀 LEVEL 2 ANALYTICS: Dynamic columns for every Village in this route */}
                     <TabsContent value="analytics" className="outline-none">
                       <AnalyticsTable 
                         entities={(activeRoute.locations?.flatMap((loc: any) => loc.villages || []) || []).map((v: string) => ({
@@ -466,7 +467,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                   </Tabs>
                 )}
 
-                {/* 🚀 LEVEL 3: FARMERS */}
+                {/* 🚀 LEVEL 3: FARMERS LIST WITH GROUND-TRUTH PROGRESS BAR */}
                 {level === 'farmers' && activeVillage && (
                   <Tabs defaultValue="list" className="w-full">
                     <TabsList className="w-full bg-muted/50 p-1 mb-4">
@@ -474,7 +475,6 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
                     </TabsList>
                     
-                    {/* 🚀 LEVEL 3 ANALYTICS: A single column for the selected village */}
                     <TabsContent value="analytics" className="outline-none">
                       <AnalyticsTable 
                         entities={[{
@@ -487,19 +487,32 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
 
                     <TabsContent value="list" className="space-y-3 outline-none">
                       {getFarmersForVillage(activeVillage).map((farmer: any) => (
-                        <div key={farmer.id} onClick={() => setSelectedFarmer(farmer)}
-                          className={`flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm cursor-pointer transition-all ${farmer.is_draft ? 'border-amber-200 bg-amber-50/10' : ''}`}
+                        <div 
+                          key={farmer.id} 
+                          onClick={() => setSelectedFarmer(farmer)}
+                          className={cn(
+                            "flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border rounded-xl shadow-sm cursor-pointer hover:border-primary/50 transition-all gap-6 sm:gap-4",
+                            farmer.is_draft ? 'border-amber-200 bg-amber-50/10' : ''
+                          )}
                         >
-                          <div className="flex items-center gap-3">
-                            <UserCircle className={`h-10 w-10 ${farmer.is_draft ? 'text-amber-400' : 'text-primary/20'}`} />
+                          <div className="flex items-center gap-3 sm:w-1/3 shrink-0">
+                            <UserCircle className={cn("h-10 w-10", farmer.is_draft ? 'text-amber-400' : 'text-primary/20')} />
                             <div>
                                 <h4 className="font-bold text-sm flex items-center gap-2">
-                                  {farmer.full_name} {farmer.is_draft && <Badge variant="outline" className="text-[8px] h-4 bg-amber-100 border-amber-300">DRAFT</Badge>}
+                                  {farmer.full_name} 
+                                  {farmer.is_draft && <Badge variant="outline" className="text-[8px] h-4 bg-amber-100 border-amber-300 px-1 py-0">DRAFT</Badge>}
                                 </h4>
                                 <p className="text-xs text-muted-foreground">{farmer.mobile}</p>
                             </div>
                           </div>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          
+                          <div className="flex-1 flex justify-center overflow-visible py-2 sm:py-0 shrink-0">
+                            <StageProgressBar stage={getFarmerStage(farmer)} />
+                          </div>
+
+                          <div className="hidden sm:flex justify-end shrink-0 w-8">
+                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                          </div>
                         </div>
                       ))}
                     </TabsContent>

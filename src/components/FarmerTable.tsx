@@ -4,6 +4,7 @@ import { DataTable, DataTableColumn, DataTableFilter } from './DataTable';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MapPin, Phone, User, Calendar as CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface FarmerRow {
   id: string;
@@ -22,7 +23,40 @@ export interface FarmerRow {
   history_details?: any;
   update_history?: any;
   profiles?: { name: string | null } | null;
+  fspp_details?: any;
+  has_farm_card?: boolean;
 }
+
+// 🚀 HELPER: Strictly calculates the 3 main Lifecycle Stages
+export const getFarmerStage = (r: FarmerRow) => {
+  if (r.has_farm_card) return 'Farm Card';
+  if (r.fspp_details && Object.keys(r.fspp_details).length > 0) return 'FSPP';
+  return 'Onboarding'; // Everything before FSPP (including Drafts) is technically Onboarding
+};
+
+// 🚀 EXPORTED FOR TERRITORY ROUTE: Visual progress bar (Safely handles the 3 new stages)
+export const StageProgressBar = ({ stage }: { stage: string }) => {
+  const level = stage === 'Farm Card' ? 3 : stage === 'FSPP' ? 2 : 1;
+
+  return (
+    <div className="flex items-center pt-5 pb-1 w-[200px]">
+      <div className="relative flex flex-col items-center z-10">
+        <span className={cn("absolute -top-4 text-[10px] font-bold italic tracking-tight", level >= 1 ? "text-green-600" : "text-gray-400")}>Onboarding</span>
+        <div className={cn("h-4 w-4 rounded-full", level >= 1 ? "bg-green-500" : "bg-gray-200")} />
+      </div>
+      <div className={cn("flex-1 h-[3px] -mx-1 z-0", level >= 2 ? "bg-green-500" : "bg-gray-200")} />
+      <div className="relative flex flex-col items-center z-10">
+        <span className={cn("absolute -top-4 text-[10px] font-bold italic tracking-tight", level >= 2 ? "text-green-600" : "text-gray-400")}>FSPP</span>
+        <div className={cn("h-4 w-4 rounded-full", level >= 2 ? "bg-green-500" : "bg-gray-200")} />
+      </div>
+      <div className={cn("flex-1 h-[3px] -mx-1 z-0", level >= 3 ? "bg-green-500" : "bg-gray-200")} />
+      <div className="relative flex flex-col items-center z-10">
+        <span className={cn("absolute -top-4 text-[10px] font-bold italic whitespace-nowrap tracking-tight", level >= 3 ? "text-green-600" : "text-gray-400")}>Farm Card</span>
+        <div className={cn("h-4 w-4 rounded-full", level >= 3 ? "bg-green-500" : "bg-gray-200")} />
+      </div>
+    </div>
+  );
+};
 
 const getUniqueLocations = (rows: FarmerRow[], key: 'district' | 'taluka' | 'village') => {
   const items = new Set<string>();
@@ -32,6 +66,7 @@ const getUniqueLocations = (rows: FarmerRow[], key: 'district' | 'taluka' | 'vil
   return Array.from(items).map(v => ({ value: v, label: v }));
 };
 
+// 🚀 RESTORED: Status Filter Options
 const getUniqueStatuses = (rows: FarmerRow[]) => {
   const statuses = new Set<string>();
   rows.forEach(r => {
@@ -40,13 +75,20 @@ const getUniqueStatuses = (rows: FarmerRow[]) => {
   return Array.from(statuses).map(s => ({ value: s, label: s }));
 };
 
+// 🚀 NEW: Stage Filter Options
+const getUniqueStages = (rows: FarmerRow[]) => {
+  const stages = new Set<string>();
+  rows.forEach(r => stages.add(getFarmerStage(r)));
+  return Array.from(stages).map(s => ({ value: s, label: s }));
+};
+
 interface FarmerTableProps {
   rows: FarmerRow[];
   onSelect: (r: FarmerRow) => void;
   seOptions?: { value: string; label: string }[];
   onFilteredDataChange?: (data: FarmerRow[]) => void;
   canEdit: boolean; 
-  villageToRoute: Record<string, string>; // 🚀 FIXED TYPE SCHEMATIC NAME
+  villageToRoute: Record<string, string>;
 }
 
 export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange, canEdit, villageToRoute }: FarmerTableProps) => {
@@ -73,10 +115,17 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
   }, [rows, startDate, endDate]);
 
   const filters: DataTableFilter<FarmerRow>[] = useMemo(() => [
+    // 🚀 RESTORED STATUS FILTER
     {
       key: 'status', label: 'Status',
       options: getUniqueStatuses(dateFilteredRows),
       predicate: (row, values) => values.includes(row.status as string),
+    },
+    // 🚀 NEW STAGE FILTER
+    {
+      key: 'stage', label: 'Stage', 
+      options: getUniqueStages(dateFilteredRows),
+      predicate: (row, values) => values.includes(getFarmerStage(row)),
     },
     {
       key: 'district', label: 'District',
@@ -120,7 +169,6 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
         <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{r.mobile}</span>
       ) : '—',
     },
-    // 🚀 PLACED PERFECTLY BETWEEN MOBILE AND LOCATION
     {
       key: 'assigned_route', header: 'Route Name',
       sortable: true, sortValue: r => {
@@ -130,7 +178,6 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
       accessor: r => {
         const safeVillage = (r.village || '').trim().toLowerCase();
         const routeName = villageToRoute[safeVillage];
-        
         return (
           <span className={`font-semibold text-sm ${routeName ? 'text-primary' : 'text-muted-foreground italic'}`}>
             {routeName || 'Unassigned'}
@@ -159,16 +206,28 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
       accessor: r => <span className="text-muted-foreground text-sm font-medium">{r?.profiles?.name || '—'}</span> 
     },
     { 
-      key: 'created_at', header: 'Date Onboarded', 
+      key: 'created_at', header: 'Date', 
       sortable: true, sortValue: r => new Date(r.created_at).getTime(),
       accessor: r => <span className="text-muted-foreground text-sm">{new Date(r.created_at).toLocaleDateString()}</span> 
     },
+    // 🚀 RESTORED: Status Column (Draft vs Submitted)
     {
       key: 'status', header: 'Status', className: 'text-center', headerClassName: 'font-semibold text-center', 
       sortable: true, sortValue: r => (r?.status || '').toLowerCase(),
       accessor: r => r?.status === 'DRAFT' 
         ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
         : <Badge variant={r?.status === 'SUBMITTED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
+    },
+    // 🚀 NEW: Text-Based Stage Column
+    {
+      key: 'stage', header: 'Stage', className: 'text-center', headerClassName: 'font-semibold text-center', 
+      sortable: true, sortValue: r => getFarmerStage(r).toLowerCase(),
+      accessor: r => {
+        const stage = getFarmerStage(r);
+        if (stage === 'Farm Card') return <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">Farm Card</Badge>;
+        if (stage === 'FSPP') return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">FSPP Checked</Badge>;
+        return <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100">Onboarding</Badge>; 
+      }
     }
   ], [villageToRoute]);
 
