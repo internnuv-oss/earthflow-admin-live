@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LogIn, LogOut, Receipt, ClipboardList, MapPin, Clock, Navigation, Gauge, Map as MapIcon, Users, ClipboardCheck } from 'lucide-react';
+import { LogIn, LogOut, Receipt, ClipboardList, MapPin, Clock, Navigation, Gauge, Map as MapIcon, Users, ClipboardCheck, Leaf } from 'lucide-react';
 import { GoogleMap, Polyline, Marker, useJsApiLoader } from '@react-google-maps/api';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -68,7 +68,6 @@ interface Props {
 
 export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props) => {
   const [livePath, setLivePath] = useState<{lat: number, lng: number}[]>([]);
-  // 🚀 Renamed to dynamicEvents to hold both Visits AND FSPP events
   const [dynamicEvents, setDynamicEvents] = useState<any[]>([]);
   const [routeName, setRouteName] = useState<string>('Loading...');
   
@@ -113,72 +112,99 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
       setPunchedInRoute(pRoute);
       setRouteName(pRoute); 
 
-      // 3. 🚀 Fetch Farmers (Now grabbing fspp_details as well!)
-      const { data } = await supabase
+      // 3. Fetch Farmers
+      const { data: farmersData } = await supabase
         .from('farmers')
         .select('id, full_name, village, created_at, comments, fspp_details' as any) 
         .eq('se_id', shift.se_id);
 
-      const farmers = data as any[]; 
-      setAllFarmers(farmers || []); 
+      const farmers = farmersData as any[] || []; 
+      setAllFarmers(farmers); 
+
+      // 4. 🚀 NEW: Fetch Farm Cards directly from DB to inject into timeline
+      const { data: farmCardsData } = await (supabase as any)
+        .from('farm_cards')
+        .select('id, farmer_id, created_at, status, card_data')
+        .eq('se_id', shift.se_id);
+      
+      const farmCards = farmCardsData as any[] || [];
       
       const injectedEvents: any[] = [];
       const shiftStartTime = shift.start_time || 0;
       
-      if (farmers) {
-        farmers.forEach(f => {
-          // --- A. INJECT GENERAL VISITS ---
-          const comments = Array.isArray(f.comments) ? f.comments : [];
-          comments.forEach(c => {
-            if (!c.created_at) return;
-            const commentDateObj = new Date(c.created_at);
-            const localMonth = String(commentDateObj.getMonth() + 1).padStart(2, '0');
-            const localDay = String(commentDateObj.getDate()).padStart(2, '0');
-            const localDateStr = `${commentDateObj.getFullYear()}-${localMonth}-${localDay}`;
+      // --- A. INJECT GENERAL VISITS & B. FSPP ENROLLMENTS ---
+      farmers.forEach(f => {
+        const comments = Array.isArray(f.comments) ? f.comments : [];
+        comments.forEach(c => {
+          if (!c.created_at) return;
+          const commentDateObj = new Date(c.created_at);
+          const localDateStr = `${commentDateObj.getFullYear()}-${String(commentDateObj.getMonth() + 1).padStart(2, '0')}-${String(commentDateObj.getDate()).padStart(2, '0')}`;
+          
+          if (localDateStr === shift.date) {
+            let eventTime = commentDateObj.getTime();
+            if (eventTime <= shiftStartTime) eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
             
-            if (localDateStr === shift.date) {
-              let eventTime = commentDateObj.getTime();
-              if (eventTime <= shiftStartTime) {
-                eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
-              }
-              
-              injectedEvents.push({
-                type: 'visit',
-                title: 'Farmer Checked-In', 
-                farmer_name: f.full_name,
-                description: c.comment,
-                time: eventTime,
-                location: f.village || 'Field Visit'
-              });
-            }
-          });
-
-          // --- B. 🚀 INJECT FSPP ENROLLMENTS ---
-          if (f.fspp_details && f.fspp_details.evaluationDate) {
-            const evalDateObj = new Date(f.fspp_details.evaluationDate);
-            const localMonth = String(evalDateObj.getMonth() + 1).padStart(2, '0');
-            const localDay = String(evalDateObj.getDate()).padStart(2, '0');
-            const evalDateStr = `${evalDateObj.getFullYear()}-${localMonth}-${localDay}`;
-            
-            if (evalDateStr === shift.date) {
-              let eventTime = evalDateObj.getTime();
-              if (eventTime <= shiftStartTime) {
-                eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
-              }
-              
-              injectedEvents.push({
-                type: 'fspp',
-                title: 'Added FSPP Details', 
-                farmer_name: f.full_name,
-                // Create a beautiful description summarizing their success score
-                description: `Score: ${f.fspp_details.score || 'N/A'} • ${f.fspp_details.category || 'N/A'}\nCommitted: ${f.fspp_details.committedLand || '0'} Acres`,
-                time: eventTime,
-                location: f.village || 'Field Visit'
-              });
-            }
+            injectedEvents.push({
+              type: 'visit',
+              title: 'Farmer Checked-In', 
+              farmer_name: f.full_name,
+              description: c.comment,
+              time: eventTime,
+              location: f.village || 'Field Visit'
+            });
           }
         });
-      }
+
+        if (f.fspp_details && f.fspp_details.evaluationDate) {
+          const evalDateObj = new Date(f.fspp_details.evaluationDate);
+          const evalDateStr = `${evalDateObj.getFullYear()}-${String(evalDateObj.getMonth() + 1).padStart(2, '0')}-${String(evalDateObj.getDate()).padStart(2, '0')}`;
+          
+          if (evalDateStr === shift.date) {
+            let eventTime = evalDateObj.getTime();
+            if (eventTime <= shiftStartTime) eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
+            
+            injectedEvents.push({
+              type: 'fspp',
+              title: 'Added FSPP Details', 
+              farmer_name: f.full_name,
+              description: `Score: ${f.fspp_details.score || 'N/A'} • ${f.fspp_details.category || 'N/A'}\nCommitted: ${f.fspp_details.committedLand || '0'} Acres`,
+              time: eventTime,
+              location: f.village || 'Field Visit'
+            });
+          }
+        }
+      });
+
+      // --- C. 🚀 INJECT FARM CARDS ---
+      farmCards.forEach(fc => {
+        if (!fc.created_at) return;
+        const cardDateObj = new Date(fc.created_at);
+        const cardDateStr = `${cardDateObj.getFullYear()}-${String(cardDateObj.getMonth() + 1).padStart(2, '0')}-${String(cardDateObj.getDate()).padStart(2, '0')}`;
+
+        if (cardDateStr === shift.date) {
+          let eventTime = cardDateObj.getTime();
+          if (eventTime <= shiftStartTime) eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
+
+          // Cross-reference with our local farmers array to get the name and village
+          const matchedFarmer = farmers.find(f => f.id === fc.farmer_id);
+          const farmerName = matchedFarmer?.full_name || fc.card_data?.farmerName || 'Unknown Farmer';
+          const village = fc.card_data?.village || matchedFarmer?.village || 'Field Visit';
+          
+          const plotName = fc.card_data?.fieldNumber || 'Unnamed Plot';
+          const area = fc.card_data?.cultivatedArea || fc.card_data?.totalLandArea || '0';
+          const unit = fc.card_data?.cultivatedAreaUnit || 'Acres';
+
+          injectedEvents.push({
+            type: 'farm_card',
+            title: 'Farm Card Generated',
+            farmer_name: farmerName,
+            description: `Plot: ${plotName} • Area: ${area} ${unit}\nStatus: ${(fc.status || 'DRAFT').toUpperCase()}`,
+            time: eventTime,
+            location: village
+          });
+        }
+      });
+
       setDynamicEvents(injectedEvents);
     };
 
@@ -189,7 +215,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
 
   const shiftDate = new Date(shift.date).toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  // 🚀 Added 'fspp' to the icon mapping
   const getIconForType = (type: string) => {
     switch(type) {
       case 'punch-in': return { icon: LogIn, color: 'text-green-600', bg: 'bg-green-100' };
@@ -197,6 +222,7 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
       case 'expense': return { icon: Receipt, color: 'text-amber-600', bg: 'bg-amber-100' };
       case 'visit': return { icon: Users, color: 'text-purple-600', bg: 'bg-purple-100' }; 
       case 'fspp': return { icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-100' }; 
+      case 'farm_card': return { icon: Leaf, color: 'text-amber-600', bg: 'bg-amber-100' }; // 🚀 NEW FARM CARD ICON
       default: return { icon: ClipboardList, color: 'text-blue-600', bg: 'bg-blue-100' };
     }
   };
@@ -245,10 +271,13 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     }
   };
 
-  // 🚀 Filter out duplicates: removes standard "General Visit" and any standard "FSPP" entries
-  // since our custom dynamic versions handle them beautifully!
+  // 🚀 Filter out duplicates: removes raw entries that are handled perfectly by our dynamic systems!
   const rawEvents = (Array.isArray(shift.events) ? shift.events : [])
-    .filter((e: any) => e.title !== 'General Visit' && !e.title?.toLowerCase().includes('fspp'));
+    .filter((e: any) => 
+      e.title !== 'General Visit' && 
+      !e.title?.toLowerCase().includes('fspp') && 
+      !e.title?.toLowerCase().includes('farm card')
+    );
 
   const events = [...rawEvents, ...dynamicEvents].sort((a: any, b: any) => (a.time || 0) - (b.time || 0));
 
@@ -356,14 +385,14 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
               <div className="text-center py-10 text-muted-foreground">No activities logged for this shift yet.</div>
             ) : (
               events.map((item: any, index: number) => {
-                // 🚀 Flag 'fspp' as a Farmer Event so it receives the intelligent Route Mismatch checks!
-                const isFarmerEvent = item.title?.includes('Farmer') || item.type === 'enrollment' || item.type === 'draft' || item.type === 'visit' || item.type === 'fspp';
+                // 🚀 Flag 'farm_card' as a Farmer Event so it receives the intelligent Route Mismatch checks!
+                const isFarmerEvent = item.title?.includes('Farmer') || item.type === 'enrollment' || item.type === 'draft' || item.type === 'visit' || item.type === 'fspp' || item.type === 'farm_card';
                 
                 let rawLoc = item.location;
                 let displayDesc = item.description;
 
                 let fName = item.farmer_name || item.farmerName;
-                if (!fName && isFarmerEvent && item.type !== 'visit' && item.type !== 'fspp') {
+                if (!fName && isFarmerEvent && item.type !== 'visit' && item.type !== 'fspp' && item.type !== 'farm_card') {
                   if (item.entity_id || item.farmer_id) {
                     fName = allFarmers.find(f => f.id === (item.entity_id || item.farmer_id))?.full_name;
                   }
@@ -373,7 +402,7 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                   }
                 }
 
-                if (!rawLoc && displayDesc && isFarmerEvent && item.type !== 'fspp') {
+                if (!rawLoc && displayDesc && isFarmerEvent && item.type !== 'fspp' && item.type !== 'farm_card') {
                   rawLoc = displayDesc;
                   displayDesc = null; 
                 }
@@ -412,15 +441,20 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                           </Badge>
                         )}
                         
-                        {/* 🚀 Render the new FSPP Badge */}
                         {item.type === 'fspp' && (
                           <Badge variant="secondary" className="shrink-0 max-w-fit bg-blue-100 text-blue-700 hover:bg-blue-100 text-[9px] px-2 py-0 border-blue-200 uppercase tracking-wider font-bold">
                             FSPP Evaluation
                           </Badge>
                         )}
+
+                        {/* 🚀 Render the new Farm Card Badge */}
+                        {item.type === 'farm_card' && (
+                          <Badge variant="secondary" className="shrink-0 max-w-fit bg-amber-100 text-amber-700 hover:bg-amber-100 text-[9px] px-2 py-0 border-amber-200 uppercase tracking-wider font-bold">
+                            Farm Card
+                          </Badge>
+                        )}
                       </div>
 
-                      {/* 🚀 ADDED: whitespace-pre-line so the \n in our FSPP description actually creates a line break! */}
                       {displayDesc && (
                         <p className="text-xs text-muted-foreground mt-0.5 font-medium leading-relaxed whitespace-pre-line">
                           {displayDesc}
