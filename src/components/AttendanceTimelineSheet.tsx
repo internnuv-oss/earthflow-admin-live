@@ -1,20 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LogIn, LogOut, Receipt, ClipboardList, MapPin, Clock, Navigation, Gauge, Map as MapIcon, Users } from 'lucide-react';
+import { LogIn, LogOut, Receipt, ClipboardList, MapPin, Clock, Navigation, Gauge, Map as MapIcon, Users, ClipboardCheck } from 'lucide-react';
 import { GoogleMap, Polyline, Marker, useJsApiLoader } from '@react-google-maps/api';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { MapContainer, TileLayer, Polyline as LeafletPolyline, Marker as LeafletMarker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// 🚀 Dedicated Map Component to render the Route Path
 // 🚀 INTELLIGENT LOCAL DEV MAP FALLBACK
 const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
-  // 1. Check if the current device is running locally
   const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-  // 2. Try loading the standard Google Maps setup
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
@@ -23,9 +20,7 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
   if (!path || path.length === 0) return <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">No GPS route data available.</div>;
   const center = path[0];
 
-  // 3. 🚀 THE MAGIC FALLBACK: If Google breaks on localhost, instantly swap to Leaflet/OpenStreetMap!
   if (loadError || isLocalDev) {
-    // Convert path objects to simple coordinate arrays that Leaflet expects: [lat, lng]
     const leafletPath = path.map(p => [p.lat, p.lng] as [number, number]);
     const leafletCenter: [number, number] = [center.lat, center.lng];
 
@@ -38,7 +33,6 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
           />
           <LeafletPolyline positions={leafletPath} pathOptions={{ color: '#2563eb', weight: 4 }} />
         </MapContainer>
-        {/* Subtle badge to let you know the fallback is working */}
         <span className="absolute bottom-2 right-2 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm z-[1000]">
           Local Dev Map Mode
         </span>
@@ -48,7 +42,6 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
 
   if (!isLoaded) return <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">Loading Map...</div>;
 
-  // 4. Production Google Maps view (Unchanged)
   return (
     <GoogleMap
       mapContainerStyle={{ width: '100%', height: '100%' }}
@@ -65,6 +58,7 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
     </GoogleMap>
   );
 };
+
 interface Props {
   shift: any | null;
   seName: string;
@@ -74,18 +68,19 @@ interface Props {
 
 export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props) => {
   const [livePath, setLivePath] = useState<{lat: number, lng: number}[]>([]);
-  const [farmerVisits, setFarmerVisits] = useState<any[]>([]);
+  // 🚀 Renamed to dynamicEvents to hold both Visits AND FSPP events
+  const [dynamicEvents, setDynamicEvents] = useState<any[]>([]);
   const [routeName, setRouteName] = useState<string>('Loading...');
   
-  // 🚀 NEW: State to hold the Village Dictionary and the Punched-In Route
   const [villageRouteMap, setVillageRouteMap] = useState<Map<string, string>>(new Map());
   const [punchedInRoute, setPunchedInRoute] = useState<string>('Others');
   const [allFarmers, setAllFarmers] = useState<any[]>([]);
+
   useEffect(() => {
     if (!open || !shift) return;
 
     const fetchExtraData = async () => {
-      // 1. Fetch High-Res GPS Location Path from your table!
+      // 1. Fetch High-Res GPS Location Path
       const { data: locs } = await supabase
         .from('shift_locations')
         .select('lat, lng')
@@ -94,14 +89,14 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
         
       if (locs && locs.length > 0) setLivePath(locs);
 
-      // 2. 🚀 Fetch ALL Routes for this SE to build the Village -> Route Dictionary
+      // 2. Fetch ALL Routes for this SE
       const { data: allRoutes } = await supabase
         .from('routes')
         .select('id, name, locations')
         .eq('se_id', shift.se_id);
       
       const vMap = new Map<string, string>();
-      let pRoute = 'Others'; // Default
+      let pRoute = 'Others'; 
 
       if (allRoutes) {
         allRoutes.forEach((r: any) => {
@@ -116,27 +111,26 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
       
       setVillageRouteMap(vMap);
       setPunchedInRoute(pRoute);
-      setRouteName(pRoute); // Updates banner at the top
+      setRouteName(pRoute); 
 
-      // 3. Fetch Farmers (for General Visits AND auto-matching names)
+      // 3. 🚀 Fetch Farmers (Now grabbing fspp_details as well!)
       const { data } = await supabase
         .from('farmers')
-        // 🚀 FIXED: Added id and created_at so we can cross-reference the events!
-        .select('id, full_name, village, created_at, comments' as any) 
+        .select('id, full_name, village, created_at, comments, fspp_details' as any) 
         .eq('se_id', shift.se_id);
 
       const farmers = data as any[]; 
-      setAllFarmers(farmers || []); // 🚀 Save to state
+      setAllFarmers(farmers || []); 
       
-      const visits: any[] = [];
+      const injectedEvents: any[] = [];
       const shiftStartTime = shift.start_time || 0;
       
       if (farmers) {
         farmers.forEach(f => {
+          // --- A. INJECT GENERAL VISITS ---
           const comments = Array.isArray(f.comments) ? f.comments : [];
           comments.forEach(c => {
             if (!c.created_at) return;
-            
             const commentDateObj = new Date(c.created_at);
             const localMonth = String(commentDateObj.getMonth() + 1).padStart(2, '0');
             const localDay = String(commentDateObj.getDate()).padStart(2, '0');
@@ -144,23 +138,48 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
             
             if (localDateStr === shift.date) {
               let eventTime = commentDateObj.getTime();
-              // Bump time past punch-in if needed so it renders correctly
               if (eventTime <= shiftStartTime) {
-                eventTime = shiftStartTime + 60000 + (visits.length * 1000); 
+                eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
               }
               
-              visits.push({
+              injectedEvents.push({
                 type: 'visit',
-                title: f.full_name || 'Farmer', 
+                title: 'Farmer Checked-In', 
+                farmer_name: f.full_name,
                 description: c.comment,
                 time: eventTime,
                 location: f.village || 'Field Visit'
               });
             }
           });
+
+          // --- B. 🚀 INJECT FSPP ENROLLMENTS ---
+          if (f.fspp_details && f.fspp_details.evaluationDate) {
+            const evalDateObj = new Date(f.fspp_details.evaluationDate);
+            const localMonth = String(evalDateObj.getMonth() + 1).padStart(2, '0');
+            const localDay = String(evalDateObj.getDate()).padStart(2, '0');
+            const evalDateStr = `${evalDateObj.getFullYear()}-${localMonth}-${localDay}`;
+            
+            if (evalDateStr === shift.date) {
+              let eventTime = evalDateObj.getTime();
+              if (eventTime <= shiftStartTime) {
+                eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
+              }
+              
+              injectedEvents.push({
+                type: 'fspp',
+                title: 'Added FSPP Details', 
+                farmer_name: f.full_name,
+                // Create a beautiful description summarizing their success score
+                description: `Score: ${f.fspp_details.score || 'N/A'} • ${f.fspp_details.category || 'N/A'}\nCommitted: ${f.fspp_details.committedLand || '0'} Acres`,
+                time: eventTime,
+                location: f.village || 'Field Visit'
+              });
+            }
+          }
         });
       }
-      setFarmerVisits(visits);
+      setDynamicEvents(injectedEvents);
     };
 
     fetchExtraData();
@@ -170,18 +189,18 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
 
   const shiftDate = new Date(shift.date).toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+  // 🚀 Added 'fspp' to the icon mapping
   const getIconForType = (type: string) => {
     switch(type) {
       case 'punch-in': return { icon: LogIn, color: 'text-green-600', bg: 'bg-green-100' };
       case 'punch-out': return { icon: LogOut, color: 'text-red-600', bg: 'bg-red-100' };
       case 'expense': return { icon: Receipt, color: 'text-amber-600', bg: 'bg-amber-100' };
       case 'visit': return { icon: Users, color: 'text-purple-600', bg: 'bg-purple-100' }; 
+      case 'fspp': return { icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-100' }; 
       default: return { icon: ClipboardList, color: 'text-blue-600', bg: 'bg-blue-100' };
     }
   };
 
-  // 🚀 INTELLIGENT MISMATCH LOCATION RENDERER
-  // 🚀 INTELLIGENT MISMATCH LOCATION RENDERER
   const renderLocation = (loc: any, isFarmerEvent: boolean) => {
     if (!loc) return null;
     let placeName = '';
@@ -195,13 +214,10 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
 
     if (!placeName) return <span className="truncate font-semibold text-foreground/80">Location Recorded</span>;
 
-    // If it's just a punch-in/out or expense, render it normally
     if (!isFarmerEvent || placeName.startsWith('GPS:')) {
        return <span className="truncate font-semibold text-foreground/80">{placeName}</span>;
     }
 
-    // 🚀 CRITICAL FIX: Aggressively extract JUST the raw village name!
-    // If the DB saved "Others (Kalasar)" or "R8- Kalasar (Kalasar)", this grabs just "Kalasar"
     let cleanPlace = placeName;
     const parenthesisMatch = placeName.match(/\(([^)]+)\)/);
     if (parenthesisMatch) {
@@ -210,15 +226,12 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
         cleanPlace = placeName.replace(/^Others[\s-]*\/?\s*/i, '').trim();
     }
 
-    // 🚀 Check the dictionary: Which route does this village ACTUALLY belong to?
     const actualRoute = villageRouteMap.get(cleanPlace.toLowerCase()) || 'Others';
     const displayActualRoute = actualRoute === 'Others' ? `Others (${cleanPlace})` : `${actualRoute} (${cleanPlace})`;
 
     if (actualRoute === punchedInRoute) {
-      // ✅ MATCH: The SE is working in the correct route
       return <span className="truncate font-semibold text-foreground/80">{displayActualRoute}</span>;
     } else {
-      // ❌ MISMATCH: The SE punched in for Route X, but is working in Route Y (or Others)!
       return (
         <div className="flex flex-col gap-1.5 mt-1">
           <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200 w-fit">
@@ -232,12 +245,12 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     }
   };
 
-  // 🚀 FIXED: Filter out the duplicate standard events titled "General Visit" 
-  // since our custom purple entry handles them with much better data layout!
+  // 🚀 Filter out duplicates: removes standard "General Visit" and any standard "FSPP" entries
+  // since our custom dynamic versions handle them beautifully!
   const rawEvents = (Array.isArray(shift.events) ? shift.events : [])
-    .filter((e: any) => e.title !== 'General Visit');
+    .filter((e: any) => e.title !== 'General Visit' && !e.title?.toLowerCase().includes('fspp'));
 
-  const events = [...rawEvents, ...farmerVisits].sort((a: any, b: any) => (a.time || 0) - (b.time || 0));
+  const events = [...rawEvents, ...dynamicEvents].sort((a: any, b: any) => (a.time || 0) - (b.time || 0));
 
   let odoDistance: string = '--';
   if (shift.start_km && shift.end_km) {
@@ -338,19 +351,19 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
             </div>
           )}
 
-          {/* Timeline */}
           <div className="space-y-0 relative">
             {events.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">No activities logged for this shift yet.</div>
             ) : (
               events.map((item: any, index: number) => {
-                const isFarmerEvent = item.title?.includes('Farmer') || item.type === 'enrollment' || item.type === 'draft' || item.type === 'visit';
+                // 🚀 Flag 'fspp' as a Farmer Event so it receives the intelligent Route Mismatch checks!
+                const isFarmerEvent = item.title?.includes('Farmer') || item.type === 'enrollment' || item.type === 'draft' || item.type === 'visit' || item.type === 'fspp';
+                
                 let rawLoc = item.location;
                 let displayDesc = item.description;
 
-                // 🚀 AUTO-MATCH FARMER NAME via Database Time-Correlation
                 let fName = item.farmer_name || item.farmerName;
-                if (!fName && isFarmerEvent && item.type !== 'visit') {
+                if (!fName && isFarmerEvent && item.type !== 'visit' && item.type !== 'fspp') {
                   if (item.entity_id || item.farmer_id) {
                     fName = allFarmers.find(f => f.id === (item.entity_id || item.farmer_id))?.full_name;
                   }
@@ -360,8 +373,7 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                   }
                 }
 
-                // Extract village from description if location is empty (for legacy Farmer events)
-                if (!rawLoc && displayDesc && isFarmerEvent) {
+                if (!rawLoc && displayDesc && isFarmerEvent && item.type !== 'fspp') {
                   rawLoc = displayDesc;
                   displayDesc = null; 
                 }
@@ -389,7 +401,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                     <div className={`flex-1 pb-8 ${isLast ? '' : ''}`}>
                       <div className="flex items-start justify-between gap-2 mb-1">
                         
-                        {/* 🚀 ADDED FARMER NAME TO TITLE */}
                         <h4 className="text-sm font-bold text-foreground">
                           {item.title || 'Activity'}
                           {fName && <span className="text-primary ml-1.5 font-bold">• {fName}</span>}
@@ -400,10 +411,18 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                             General Visit
                           </Badge>
                         )}
+                        
+                        {/* 🚀 Render the new FSPP Badge */}
+                        {item.type === 'fspp' && (
+                          <Badge variant="secondary" className="shrink-0 max-w-fit bg-blue-100 text-blue-700 hover:bg-blue-100 text-[9px] px-2 py-0 border-blue-200 uppercase tracking-wider font-bold">
+                            FSPP Evaluation
+                          </Badge>
+                        )}
                       </div>
 
+                      {/* 🚀 ADDED: whitespace-pre-line so the \n in our FSPP description actually creates a line break! */}
                       {displayDesc && (
-                        <p className="text-xs text-muted-foreground mt-0.5 font-medium leading-relaxed">
+                        <p className="text-xs text-muted-foreground mt-0.5 font-medium leading-relaxed whitespace-pre-line">
                           {displayDesc}
                         </p>
                       )}
