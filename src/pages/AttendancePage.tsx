@@ -17,6 +17,35 @@ const toYYYYMMDD = (date: Date) => {
   return d.toISOString().split('T')[0];
 };
 
+// 🚀 NEW: Intelligent Attendance Rule Engine
+const getAttendanceInfo = (shift: any) => {
+  if (!shift) return { status: 'Absent', short: 'A', color: 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' };
+  
+  // If they haven't punched out yet
+  if (!shift.end_time) return { status: 'Active Shift', short: 'ON', color: 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' };
+
+  const totalHours = (shift.end_time - shift.start_time) / 3600000; // Convert ms to hours
+  const logoutDate = new Date(shift.end_time);
+  const logoutDecimal = logoutDate.getHours() + (logoutDate.getMinutes() / 60);
+
+  // Rule 3: If completed more than 7.5 hours, consider it a full day
+  if (totalHours > 7.5) {
+    return { status: 'Full Day', short: 'P', color: 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' };
+  }
+  
+  // Rule 1: If logged out between 1:00 PM (13.0) and 2:30 PM (14.5), consider it a half day
+  if (logoutDecimal >= 13.0 && logoutDecimal <= 14.5) {
+    return { status: 'Half Day', short: 'HD', color: 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200' };
+  }
+  
+  // Rule 2 & 4: Logged out before 1:00 PM OR after 2:30 PM (with < 7.5 hours) -> Show Total Hours
+  return { 
+    status: `${totalHours.toFixed(1)} Hours`, 
+    short: `${totalHours.toFixed(1)}h`, 
+    color: 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200' 
+  };
+};
+
 const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
   const { session, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -70,7 +99,6 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
       const endDateStr = toYYYYMMDD(weekDays[6]);
 
       const [profilesRes, shiftsRes] = await Promise.all([
-        // 🚀 FIXED: Added .eq('is_demo', false) to exclude demo SEs!
         supabase.from('profiles').select('id, name').eq('role', 'SE').eq('is_demo', false).order('name'),
         supabase.from('shifts')
           .select('*')
@@ -107,7 +135,7 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
     setCurrentWeekStart(newStart);
   };
 
-  // 🚀 NEW: Monthly CSV Export Logic
+  // Monthly CSV Export Logic
   const handleExportMonthlyAttendance = async () => {
     setExporting(true);
     try {
@@ -129,23 +157,23 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
       // 2. Fetch all shifts for the entire month
       const { data: shifts, error: sErr } = await supabase
         .from('shifts')
-        .select('se_id, date')
+        .select('se_id, date, start_time, end_time')
         .gte('date', startDate)
         .lte('date', endDate);
       if (sErr) throw sErr;
 
       // 3. Map shifts to SEs by Date
-      const shiftMap: Record<string, Set<string>> = {};
+      const shiftMap: Record<string, Record<string, any>> = {};
       (shifts || []).forEach(s => {
-        if (!shiftMap[s.se_id]) shiftMap[s.se_id] = new Set();
-        shiftMap[s.se_id].add(s.date);
+        if (!shiftMap[s.se_id]) shiftMap[s.se_id] = {};
+        shiftMap[s.se_id][s.date] = s;
       });
 
-      // 4. Build CSV Headers (Name, 1, 2, 3... 31, Total Present)
-      const headers = ['Executive Name', ...Array.from({ length: daysInMonth }, (_, i) => i + 1), 'Total Present'];
+      // 4. Build CSV Headers
+      const headers = ['Executive Name', ...Array.from({ length: daysInMonth }, (_, i) => i + 1), 'Days Present'];
       const csvRows = [headers.join(',')];
 
-      // 5. Build CSV Rows
+      // 5. Build CSV Rows (Applying the new rules!)
       (profiles || []).forEach(se => {
         const row = [`"${se.name}"`];
         let presentCount = 0;
@@ -154,12 +182,14 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
           const dateStr = `${exportMonth}-${String(i).padStart(2, '0')}`;
           
           if (dateStr > todayStr) {
-            row.push('-'); // Do not mark A/P for future dates
-          } else if (shiftMap[se.id]?.has(dateStr)) {
-            row.push('P');
+            row.push('-'); // Future dates
+          } else if (shiftMap[se.id] && shiftMap[se.id][dateStr]) {
+            // Apply the smart logic to the CSV
+            const info = getAttendanceInfo(shiftMap[se.id][dateStr]);
+            row.push(`"${info.status}"`);
             presentCount++;
           } else {
-            row.push('A');
+            row.push('Absent');
           }
         }
         
@@ -246,7 +276,7 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
               </Button>
             </div>
 
-            {/* 🚀 NEW: Download Button */}
+            {/* Download Button */}
             <Button 
               variant="outline" 
               className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200 w-full sm:w-auto"
@@ -268,7 +298,7 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
                   <tr>
                     <th className="px-4 py-3 font-semibold text-muted-foreground min-w-[200px]">Executive</th>
                     {weekDays.map(day => (
-                      <th key={day.toISOString()} className="px-2 py-3 text-center min-w-[60px]">
+                      <th key={day.toISOString()} className="px-2 py-3 text-center min-w-[65px]">
                         <div className="text-xs font-semibold uppercase text-muted-foreground">
                           {day.toLocaleDateString([], { weekday: 'short' })}
                         </div>
@@ -295,6 +325,9 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
                           const dateStr = toYYYYMMDD(day);
                           const shift = shiftsMap[se.id]?.[dateStr];
                           const isFuture = dateStr > todayStr;
+                          
+                          // Process UI rendering with the logic
+                          const info = getAttendanceInfo(shift);
 
                           return (
                             <td key={dateStr} className="px-2 py-3 text-center">
@@ -303,14 +336,14 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
                               ) : shift ? (
                                 <button 
                                   onClick={() => setSelectedShift({ shift, seName: se.name })}
-                                  className="w-8 h-8 mx-auto rounded flex items-center justify-center bg-green-100 text-green-700 font-bold border border-green-200 hover:bg-green-200 transition-colors"
-                                  title="Present - Click for Timeline"
+                                  className={`w-10 h-8 mx-auto rounded flex items-center justify-center font-bold border transition-colors text-[11px] ${info.color}`}
+                                  title={`${info.status} - Click for Timeline`}
                                 >
-                                  P
+                                  {info.short}
                                 </button>
                               ) : (
-                                <div className="w-8 h-8 mx-auto rounded flex items-center justify-center bg-red-100 text-red-700 font-bold border border-red-200" title="Absent">
-                                  A
+                                <div className={`w-10 h-8 mx-auto rounded flex items-center justify-center font-bold border text-[11px] ${info.color}`} title="Absent">
+                                  {info.short}
                                 </div>
                               )}
                             </td>
@@ -347,7 +380,7 @@ const AttendancePage = ({ onLogout }: { onLogout: () => void }) => {
         onClose={() => setSelectedShift(null)}
       />
 
-      {/* 🚀 NEW: Export Month Selector Dialog */}
+      {/* Export Month Selector Dialog */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
