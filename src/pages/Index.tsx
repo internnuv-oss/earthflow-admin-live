@@ -17,6 +17,8 @@ import AttendancePage from './AttendancePage';
 import ExpensesPage from './ExpensesPage';
 import LocationMasterPage from './LocationMasterPage';
 import ShiftsPage from '@/pages/ShiftsPage';
+import FarmDiaryMasters from './FarmDiaryMasters';
+import FsppApprovals from './FsppApprovals';
 const Index = () => {
   const { session, loading } = useAuth();
   const logout = async () => { await supabase.auth.signOut(); };
@@ -54,6 +56,8 @@ const Index = () => {
   element={guard(<AttendancePage onLogout={logout} />)} 
 />
 <Route path="/expenses" element={guard(<ExpensesPage onLogout={logout} />)} />
+      <Route path="/farm-diary-masters" element={guard(<FarmDiaryMasters onLogout={logout} />)} />
+      <Route path="/fspp-approvals" element={guard(<FsppApprovals onLogout={logout} />)} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>

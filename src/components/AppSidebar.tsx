@@ -38,6 +38,8 @@ const navItems = [
   { to: '/expenses', label: 'Expenses', icon: Receipt, module: 'expenses' },
   { to: '/locations', label: 'Location Master', icon: Map, module: 'locations' },
   { to: '/shifts', label: 'Shifts', icon: CalendarDays, module: 'shifts' },
+  { to: '/farm-diary-masters', label: 'Farm Diary Masters', icon: FileText, module: 'farm_diary_masters' },
+  { to: '/fspp-approvals', label: 'FSPP Approvals', icon: FileText, module: 'fspp_approvals' },
   
   
 ];
