@@ -7,10 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle, XCircle, Clock, ShieldCheck, Eye, Calendar } from 'lucide-react';
+
+// 🚀 IMPORTS THE SHEET COMPONENT
+import FarmerDetailSheet from '@/components/FarmerDetailSheet'; 
 
 export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
@@ -24,7 +26,7 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  // 🚀 NEW: Pagination State
+  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
@@ -34,12 +36,10 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
 
   const db = supabase as any;
 
-  // Re-fetch data whenever the selected month changes
   useEffect(() => {
     fetchFarmCards();
   }, [selectedMonth]);
 
-  // 🚀 NEW: Reset page to 1 if tab or month changes
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, selectedMonth]);
@@ -56,10 +56,10 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
       .from('farm_cards')
       .select(`
         id, status, fspp_approval_status, created_at, card_data,
-        farmers ( id, full_name, mobile, village, fspp_details ),
+        farmers ( * ), 
         profiles:se_id ( name )
       `)
-      // NO STATUS FILTER - Shows DRAFTS too!
+      // 🚀 CHANGED TO `farmers ( * )` above so the Sheet gets all the Personal/Farm details!
       .gte('created_at', startDate) 
       .lt('created_at', endDate)    
       .order('created_at', { ascending: false });
@@ -87,10 +87,12 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
     } else {
       toast({ title: `Card ${newStatus}`, description: `Farm card has been ${newStatus.toLowerCase()}.` });
       setFarmCards(prev => prev.map(c => c.id === cardId ? { ...c, fspp_approval_status: newStatus } : c));
+      
+      // If the admin approved it while looking at the Quick Actions in the table, close the sheet if it's open
+      setIsDetailsOpen(false); 
     }
   };
 
-  // 🚀 NEW: Pagination Logic
   const filteredCards = farmCards.filter(c => c.fspp_approval_status === activeTab);
   const totalPages = Math.ceil(filteredCards.length / ITEMS_PER_PAGE) || 1;
   const paginatedCards = filteredCards.slice(
@@ -159,7 +161,6 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* 🚀 NEW: Mapping over paginatedCards instead of filteredCards */}
                     {paginatedCards.length === 0 ? (
                       <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">No {activeTab.toLowerCase()} farm cards found.</TableCell></TableRow>
                     ) : (
@@ -198,10 +199,11 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
                             </TableCell>
                             <TableCell className="text-right pr-6">
                               <div className="flex justify-end gap-2">
+                                {/* 🚀 OPENS YOUR FARMER DETAIL SHEET */}
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 
-                                  title="View FSPP Details"
+                                  title="View Farmer Full Profile"
                                   onClick={() => { setSelectedCard(card); setIsDetailsOpen(true); }}
                                 >
                                   <Eye className="h-4 w-4 text-muted-foreground" />
@@ -237,7 +239,6 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
               )}
             </CardContent>
 
-            {/* 🚀 NEW: Pagination Footer */}
             {!loading && filteredCards.length > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-3 border-t bg-muted/10 gap-3 rounded-b-lg">
                 <div className="text-xs text-muted-foreground font-medium">
@@ -254,56 +255,18 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
         </Tabs>
       </div>
 
-      {/* Details Dialog */}
-      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Farmer Validation Details</DialogTitle>
-            <DialogDescription>
-              FSPP Metrics for {selectedCard?.farmers?.full_name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {selectedCard?.farmers?.fspp_details ? (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="space-y-1">
-                  <span className="text-muted-foreground text-xs font-bold uppercase">Category</span>
-                  <p className="font-semibold">{selectedCard.farmers.fspp_details.category}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-muted-foreground text-xs font-bold uppercase">Total Score</span>
-                  <p className="font-semibold">{selectedCard.farmers.fspp_details.score} / 100</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-muted-foreground text-xs font-bold uppercase">Total Land</span>
-                  <p className="font-semibold">{selectedCard.farmers.fspp_details.totalLand} Acres</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-muted-foreground text-xs font-bold uppercase">Committed Land</span>
-                  <p className="font-semibold text-primary">{selectedCard.farmers.fspp_details.committedLand} {selectedCard.farmers.fspp_details.committedLandUnit || 'Acres'}</p>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <span className="text-muted-foreground text-xs font-bold uppercase">Status Label</span>
-                  <p className="font-medium bg-muted p-2 rounded-md mt-1">{selectedCard.farmers.fspp_details.statusLabel}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-muted-foreground text-sm italic">No FSPP Evaluation data attached.</p>
-            )}
-            
-            {selectedCard?.fspp_approval_status === 'PENDING' && (
-              <div className="flex gap-2 pt-4 border-t mt-4">
-                <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => { handleUpdateStatus(selectedCard.id, 'APPROVED'); setIsDetailsOpen(false); }}>
-                  <CheckCircle className="mr-2 h-4 w-4" /> Approve Card
-                </Button>
-                <Button className="w-full" variant="destructive" onClick={() => { handleUpdateStatus(selectedCard.id, 'REJECTED'); setIsDetailsOpen(false); }}>
-                  <XCircle className="mr-2 h-4 w-4" /> Reject Card
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* 🚀 THE FARMER DETAIL SHEET INTEGRATION */}
+      {selectedCard && (
+        <FarmerDetailSheet 
+          farmer={selectedCard.farmers}  // Passing the full farmer object we grabbed from the DB!
+          open={isDetailsOpen} 
+          canEdit={false} // Disable editing from this view just to be safe
+          onClose={() => {
+            setIsDetailsOpen(false);
+            setTimeout(() => setSelectedCard(null), 300); // Small delay for smooth closing animation
+          }} 
+        />
+      )}
     </AppLayout>
   );
 }
