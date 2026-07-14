@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 // 🚀 IMPORT THE VISUAL PROGRESS BAR FROM YOUR TABLE FILE
 import { StageProgressBar, getFarmerStage } from './FarmerTable';
 
+
 interface Props {
   se: any | null;
   open: boolean;
@@ -23,23 +24,48 @@ interface Props {
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
-// 🚀 DYNAMIC ANALYTICS TABLE COMPONENT
+
+
+
 const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
   
   const computeMetrics = (farmers: any[], villageCount: number) => {
     if (!farmers || farmers.length === 0) {
       return {
-        villageCount, totalFarmers: 0, completed: 0, drafts: 0, fsppCount: 0, avgScore: 0,
-        totalLand: '0', committedLand: '0', avgLand: '0', topCrops: '—', topSoils: '—',
-        primaryStage: '—', lastVisited: '—'
+        villageCount, totalFarmers: 0, completed: 0, drafts: 0, 
+        fsppCount: '0', // Defaults to 0 string
+        avgScore: 0, totalLand: '0', committedLand: '0', avgLand: '0', 
+        topCrops: '—', topSoils: '—', primaryStage: '—', lastVisited: '—'
       };
     }
 
     const totalFarmers = farmers.length;
     const completed = farmers.filter(f => !f.is_draft).length;
     const drafts = farmers.filter(f => f.is_draft).length;
+    
+    // FSPP Calculations
     const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
     
+    // 🚀 NEW: Dynamic Category Counting (Hiding Zeros)
+    const counts: Record<string, number> = {
+      'Category A': 0, 'Category B': 0, 'Category C': 0, 'Category D': 0
+    };
+    
+    fspp.forEach(f => {
+      const cat = f.fspp_details?.category;
+      if (counts[cat] !== undefined) counts[cat]++;
+    });
+
+    // Filter out categories with 0, and map to "Category X: count" format
+    const activeCategories = Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([cat, count]) => `${cat}: ${count}`);
+
+    // Build the final string: "Total (Cat A: X, Cat B: Y)"
+    const fsppCountDisplay = activeCategories.length > 0
+      ? `${fspp.length} (${activeCategories.join(', ')})`
+      : `${fspp.length}`;
+
     const avgScore = fspp.length > 0 
       ? Math.round(fspp.reduce((sum, f) => sum + Number(f.fspp_details?.score || 0), 0) / fspp.length) 
       : 0;
@@ -101,14 +127,16 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
       : '—';
 
     return {
-      villageCount, totalFarmers, completed, drafts, fsppCount: fspp.length, avgScore,
-      totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
+      villageCount, totalFarmers, completed, drafts, 
+      fsppCount: fsppCountDisplay, // 🚀 Uses the newly formatted string here!
+      avgScore, totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
       topCrops, topSoils, primaryStage, lastVisited
     };
   };
 
   const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
 
+  // Removed the extra breakdown row since it's merged into fsppCount now
   const rows = [
     { label: "Number of Villages", key: "villageCount" },
     { label: "Number of Farmers", key: "totalFarmers" },
@@ -215,7 +243,7 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
                   </td>
                   {columnData.map((data, colIdx) => (
                     <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 font-medium text-foreground/90 
-                      ${['topCrops', 'topSoils', 'primaryStage'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : 'whitespace-nowrap'}`}
+                      ${['topCrops', 'topSoils', 'primaryStage', 'fsppCount'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : 'whitespace-nowrap'}`}
                     >
                       {data[row.key as keyof typeof data]}
                     </td>
@@ -229,6 +257,10 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     </div>
   );
 };
+
+
+
+
 
 export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   const [level, setLevel] = useState<ViewLevel>('routes');
