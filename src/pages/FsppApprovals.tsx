@@ -9,9 +9,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, CheckCircle, XCircle, Clock, ShieldCheck, Eye, Calendar } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, CheckCircle, XCircle, Clock, ShieldCheck, Eye, Calendar as CalendarIcon, Search, Filter, RotateCcw } from 'lucide-react';
 
-// 🚀 IMPORTS THE SHEET COMPONENT
+// 🚀 NEW IMPORTS FOR THE DATE RANGE PICKER
+import { format } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
 import FarmerDetailSheet from '@/components/FarmerDetailSheet'; 
 
 export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
@@ -20,11 +27,21 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
   const [farmCards, setFarmCards] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('PENDING');
   
-  // Month Filter State
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // 🚀 NEW: Unified DateRange State (Defaults to current month)
+  const [date, setDate] = useState<DateRange | undefined>(() => {
+    const d = new Date();
+    return {
+      from: new Date(d.getFullYear(), d.getMonth(), 1),
+      to: new Date(d.getFullYear(), d.getMonth() + 1, 0)
+    };
   });
+
+  // Search and Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [seFilter, setSeFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [minLandFilter, setMinLandFilter] = useState('');
+  const [landUnitFilter, setLandUnitFilter] = useState('Acres');
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -36,21 +53,30 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
 
   const db = supabase as any;
 
+  // Fetch when the date range changes
   useEffect(() => {
     fetchFarmCards();
-  }, [selectedMonth]);
+  }, [date]);
 
+  // Reset pagination if ANY filter or tab changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, selectedMonth]);
+  }, [activeTab, date, searchQuery, seFilter, categoryFilter, minLandFilter, landUnitFilter]);
 
   const fetchFarmCards = async () => {
+    // If they cleared the calendar entirely, don't fetch
+    if (!date?.from) return; 
     setLoading(true);
     
-    const [year, month] = selectedMonth.split('-');
-    const startDate = `${selectedMonth}-01T00:00:00.000Z`;
-    const nextMonthDate = new Date(parseInt(year), parseInt(month), 1);
-    const endDate = nextMonthDate.toISOString();
+    // 🚀 SMART DATE LOGIC:
+    // If they only clicked ONE day, we use that same day for both start and end!
+    const fromDate = new Date(date.from);
+    fromDate.setHours(0, 0, 0, 0); // Start of day
+    const startISO = fromDate.toISOString();
+
+    const toDate = date.to ? new Date(date.to) : new Date(date.from);
+    toDate.setHours(23, 59, 59, 999); // End of day
+    const endISO = toDate.toISOString();
 
     const { data, error } = await db
       .from('farm_cards')
@@ -59,9 +85,8 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
         farmers ( * ), 
         profiles:se_id ( name )
       `)
-      // 🚀 CHANGED TO `farmers ( * )` above so the Sheet gets all the Personal/Farm details!
-      .gte('created_at', startDate) 
-      .lt('created_at', endDate)    
+      .gte('created_at', startISO) 
+      .lte('created_at', endISO)    
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -87,42 +112,178 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
     } else {
       toast({ title: `Card ${newStatus}`, description: `Farm card has been ${newStatus.toLowerCase()}.` });
       setFarmCards(prev => prev.map(c => c.id === cardId ? { ...c, fspp_approval_status: newStatus } : c));
-      
-      // If the admin approved it while looking at the Quick Actions in the table, close the sheet if it's open
       setIsDetailsOpen(false); 
     }
   };
 
-  const filteredCards = farmCards.filter(c => c.fspp_approval_status === activeTab);
-  const totalPages = Math.ceil(filteredCards.length / ITEMS_PER_PAGE) || 1;
-  const paginatedCards = filteredCards.slice(
+  // Reset Filters Function
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSeFilter('ALL');
+    setCategoryFilter('ALL');
+    setMinLandFilter('');
+    setLandUnitFilter('Acres');
+    
+    // Reset date back to current month
+    const d = new Date();
+    setDate({
+      from: new Date(d.getFullYear(), d.getMonth(), 1),
+      to: new Date(d.getFullYear(), d.getMonth() + 1, 0)
+    });
+  };
+
+  const uniqueSEs = Array.from(new Set(farmCards.map(c => c.profiles?.name).filter(Boolean)));
+
+  const baseFilteredCards = farmCards.filter(c => {
+    const farmerName = (c.farmers?.full_name || '').toLowerCase();
+    const mobile = c.farmers?.mobile || '';
+    const seName = c.profiles?.name || '';
+    const cat = c.farmers?.fspp_details?.category || 'Uncategorized';
+    const committedLand = parseFloat(c.farmers?.fspp_details?.committedLand || 0);
+    const farmerLandUnit = c.farmers?.fspp_details?.committedLandUnit || 'Acres';
+
+    const matchesSearch = !searchQuery || farmerName.includes(searchQuery.toLowerCase()) || mobile.includes(searchQuery);
+    const matchesSE = seFilter === 'ALL' || seName === seFilter;
+    const matchesCat = categoryFilter === 'ALL' || cat === categoryFilter;
+    const matchesLand = !minLandFilter || (farmerLandUnit === landUnitFilter && committedLand >= parseFloat(minLandFilter));
+
+    return matchesSearch && matchesSE && matchesCat && matchesLand;
+  });
+
+  const tabFilteredCards = baseFilteredCards.filter(c => c.fspp_approval_status === activeTab);
+  const totalPages = Math.ceil(tabFilteredCards.length / ITEMS_PER_PAGE) || 1;
+  const paginatedCards = tabFilteredCards.slice(
     (currentPage - 1) * ITEMS_PER_PAGE, 
     currentPage * ITEMS_PER_PAGE
   );
 
-  const pendingCount = farmCards.filter(c => c.fspp_approval_status === 'PENDING').length;
-  const approvedCount = farmCards.filter(c => c.fspp_approval_status === 'APPROVED').length;
-  const rejectedCount = farmCards.filter(c => c.fspp_approval_status === 'REJECTED').length;
+  const pendingCount = baseFilteredCards.filter(c => c.fspp_approval_status === 'PENDING').length;
+  const approvedCount = baseFilteredCards.filter(c => c.fspp_approval_status === 'APPROVED').length;
+  const rejectedCount = baseFilteredCards.filter(c => c.fspp_approval_status === 'REJECTED').length;
 
   return (
     <AppLayout onLogout={onLogout}>
       <div className="flex flex-col gap-6 animate-in fade-in duration-300">
         
+        {/* Header & New Single Calendar Filter */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight">FSPP Farm Card Approvals</h2>
             <p className="text-muted-foreground">Review and approve Farm Cards based on the farmer's FSPP Category.</p>
           </div>
-          <div className="flex items-center gap-2 bg-white border p-2 rounded-lg shadow-sm">
-            <Calendar className="h-4 w-4 text-muted-foreground ml-1" />
-            <Label className="text-sm font-semibold text-muted-foreground mr-1">Filter Month:</Label>
+          
+          {/* 🚀 THE NEW DATE RANGE PICKER COMPONENT */}
+          <div className="flex items-center gap-2">
+            <Label className="text-sm font-semibold text-muted-foreground mr-1 hidden sm:block">Filter Date:</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  id="date"
+                  variant={"outline"}
+                  className={cn(
+                    "w-[260px] justify-start text-left font-normal bg-white shadow-sm",
+                    !date && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {date?.from ? (
+                    date.to ? (
+                      <>
+                        {format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}
+                      </>
+                    ) : (
+                      format(date.from, "LLL dd, y")
+                    )
+                  ) : (
+                    <span>Pick a date range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={date?.from}
+                  selected={date}
+                  onSelect={setDate}
+                  numberOfMonths={1}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        {/* Smart Filter Bar */}
+        <div className="bg-white p-4 rounded-lg border shadow-sm grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+          
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5"><Search className="h-3 w-3"/> Search Farmer</Label>
             <Input 
-              type="month" 
-              value={selectedMonth} 
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="h-8 w-40" 
+              placeholder="Name or Mobile..." 
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)} 
             />
           </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5"><Filter className="h-3 w-3"/> SE Name</Label>
+            <Select value={seFilter} onValueChange={setSeFilter}>
+              <SelectTrigger><SelectValue placeholder="All Executives" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Executives</SelectItem>
+                {uniqueSEs.map((se: any) => (
+                  <SelectItem key={se} value={se}>{se}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5"><Filter className="h-3 w-3"/> FSPP Category</Label>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger><SelectValue placeholder="All Categories" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Categories</SelectItem>
+                <SelectItem value="Category A">Category A</SelectItem>
+                <SelectItem value="Category B">Category B</SelectItem>
+                <SelectItem value="Category C">Category C</SelectItem>
+                <SelectItem value="Category D">Category D</SelectItem>
+                <SelectItem value="Uncategorized">Uncategorized</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5"><Filter className="h-3 w-3"/> Min. Committed Land</Label>
+            <div className="flex gap-2">
+              <Input 
+                type="number"
+                min="0"
+                placeholder="e.g. 5" 
+                value={minLandFilter} 
+                onChange={(e) => setMinLandFilter(e.target.value)} 
+                className="w-full"
+              />
+              <Select value={landUnitFilter} onValueChange={setLandUnitFilter}>
+                <SelectTrigger className="w-[100px] shrink-0"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Acres">Acres</SelectItem>
+                  <SelectItem value="Bigha">Bigha</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-end lg:justify-start">
+            <Button 
+              variant="outline" 
+              className="w-full lg:w-auto gap-2 text-muted-foreground hover:text-foreground"
+              onClick={handleResetFilters}
+            >
+              <RotateCcw className="h-4 w-4" /> Reset Filters
+            </Button>
+          </div>
+
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -142,7 +303,12 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
                 {activeTab === 'PENDING' ? 'Awaiting Admin Approval' : `${activeTab} Farm Cards`}
               </CardTitle>
               <CardDescription>
-                Showing data for {new Date(selectedMonth + '-01').toLocaleDateString([], { month: 'long', year: 'numeric' })}. Category A farmers are Auto-Approved.
+                {date?.from && date?.to 
+                  ? `Showing data from ${format(date.from, "MMM d, yyyy")} to ${format(date.to, "MMM d, yyyy")}. Category A farmers are Auto-Approved.`
+                  : date?.from 
+                  ? `Showing data for ${format(date.from, "MMM d, yyyy")}. Category A farmers are Auto-Approved.`
+                  : 'Please select a date range.'
+                }
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
@@ -162,7 +328,7 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
                   </TableHeader>
                   <TableBody>
                     {paginatedCards.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">No {activeTab.toLowerCase()} farm cards found.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">No {activeTab.toLowerCase()} farm cards found matching your filters.</TableCell></TableRow>
                     ) : (
                       paginatedCards.map((card) => {
                         const farmer = card.farmers || {};
@@ -199,7 +365,6 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
                             </TableCell>
                             <TableCell className="text-right pr-6">
                               <div className="flex justify-end gap-2">
-                                {/* 🚀 OPENS YOUR FARMER DETAIL SHEET */}
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 
@@ -239,10 +404,10 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
               )}
             </CardContent>
 
-            {!loading && filteredCards.length > 0 && (
+            {!loading && tabFilteredCards.length > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-3 border-t bg-muted/10 gap-3 rounded-b-lg">
                 <div className="text-xs text-muted-foreground font-medium">
-                  Showing <span className="text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, filteredCards.length)}</span> of <span className="text-foreground">{filteredCards.length}</span> entries
+                  Showing <span className="text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, tabFilteredCards.length)}</span> of <span className="text-foreground">{tabFilteredCards.length}</span> entries
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Previous</Button>
@@ -255,15 +420,14 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
         </Tabs>
       </div>
 
-      {/* 🚀 THE FARMER DETAIL SHEET INTEGRATION */}
       {selectedCard && (
         <FarmerDetailSheet 
-          farmer={selectedCard.farmers}  // Passing the full farmer object we grabbed from the DB!
+          farmer={selectedCard.farmers}  
           open={isDetailsOpen} 
-          canEdit={false} // Disable editing from this view just to be safe
+          canEdit={false}
           onClose={() => {
             setIsDetailsOpen(false);
-            setTimeout(() => setSelectedCard(null), 300); // Small delay for smooth closing animation
+            setTimeout(() => setSelectedCard(null), 300); 
           }} 
         />
       )}
