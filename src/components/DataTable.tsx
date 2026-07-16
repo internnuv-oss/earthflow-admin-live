@@ -5,7 +5,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-// Added X icon for the reset button
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, PlusCircle, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +24,7 @@ export interface DataTableFilter<T> {
   options: { value: string; label: string }[];
   predicate: (row: T, selectedValues: string[]) => boolean; 
   width?: string;
+  isSingleSelect?: boolean; // 🚀 ADDED: Flag to enable radio-button behavior
 }
 
 interface DataTableProps<T> {
@@ -190,19 +190,35 @@ export function DataTable<T>({
                             <CommandItem
                               key={opt.value}
                               onSelect={() => {
-                                const next = new Set(selectedValues);
-                                if (isSelected) { next.delete(opt.value); } 
-                                else { next.add(opt.value); }
-                                updateFilter(f.key, Array.from(next));
+                                // 🚀 UPDATED: Handle single vs multi select logic
+                                if (f.isSingleSelect) {
+                                  // For radio buttons: selecting an already active item clears it, otherwise it replaces the array
+                                  updateFilter(f.key, isSelected ? [] : [opt.value]);
+                                } else {
+                                  // Standard checkbox logic
+                                  const next = new Set(selectedValues);
+                                  if (isSelected) { next.delete(opt.value); } 
+                                  else { next.add(opt.value); }
+                                  updateFilter(f.key, Array.from(next));
+                                }
                               }}
                             >
+                              {/* 🚀 UPDATED: Visual styling switches between Checkbox and Radio Button */}
                               <div
                                 className={cn(
-                                  "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                  isSelected ? "bg-primary text-primary-foreground" : "opacity-50 [&_svg]:invisible"
+                                  "mr-2 flex h-4 w-4 items-center justify-center border border-primary",
+                                  f.isSingleSelect ? "rounded-full" : "rounded-sm", // Circle for radio, square for checkbox
+                                  !isSelected && "opacity-50",
+                                  isSelected && !f.isSingleSelect && "bg-primary text-primary-foreground" // Only fill background for checkbox
                                 )}
                               >
-                                <Check className="h-4 w-4" />
+                                {f.isSingleSelect ? (
+                                  // Render a dot for single select
+                                  isSelected && <div className="h-2 w-2 rounded-full bg-primary" />
+                                ) : (
+                                  // Render a checkmark for multi select
+                                  isSelected && <Check className="h-4 w-4" />
+                                )}
                               </div>
                               <span className="truncate">{opt.label}</span>
                             </CommandItem>
@@ -229,7 +245,6 @@ export function DataTable<T>({
             );
           })}
 
-          {/* NEW RESET BUTTON */}
           {hasActiveFilters && (
             <Button
               variant="ghost"

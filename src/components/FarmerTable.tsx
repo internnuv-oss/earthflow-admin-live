@@ -27,14 +27,12 @@ export interface FarmerRow {
   has_farm_card?: boolean;
 }
 
-// 🚀 HELPER: Strictly calculates the 3 main Lifecycle Stages
 export const getFarmerStage = (r: FarmerRow) => {
   if (r.has_farm_card) return 'Farm Card';
   if (r.fspp_details && Object.keys(r.fspp_details).length > 0) return 'FSPP';
-  return 'Onboarding'; // Everything before FSPP (including Drafts) is technically Onboarding
+  return 'Onboarding';
 };
 
-// 🚀 EXPORTED FOR TERRITORY ROUTE: Visual progress bar (Safely handles the 3 new stages)
 export const StageProgressBar = ({ stage }: { stage: string }) => {
   const level = stage === 'Farm Card' ? 3 : stage === 'FSPP' ? 2 : 1;
 
@@ -66,7 +64,6 @@ const getUniqueLocations = (rows: FarmerRow[], key: 'district' | 'taluka' | 'vil
   return Array.from(items).map(v => ({ value: v, label: v }));
 };
 
-// 🚀 RESTORED: Status Filter Options
 const getUniqueStatuses = (rows: FarmerRow[]) => {
   const statuses = new Set<string>();
   rows.forEach(r => {
@@ -75,11 +72,13 @@ const getUniqueStatuses = (rows: FarmerRow[]) => {
   return Array.from(statuses).map(s => ({ value: s, label: s }));
 };
 
-// 🚀 NEW: Stage Filter Options
-const getUniqueStages = (rows: FarmerRow[]) => {
-  const stages = new Set<string>();
-  rows.forEach(r => stages.add(getFarmerStage(r)));
-  return Array.from(stages).map(s => ({ value: s, label: s }));
+// 🚀 FIXED: Hardcoded the specific sequence you requested!
+const getOrderedStages = () => {
+  return [
+    { value: 'Onboarding', label: 'Onboarding' },
+    { value: 'FSPP', label: 'FSPP' },
+    { value: 'Farm Card', label: 'Farm Card' }
+  ];
 };
 
 interface FarmerTableProps {
@@ -115,17 +114,21 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
   }, [rows, startDate, endDate]);
 
   const filters: DataTableFilter<FarmerRow>[] = useMemo(() => [
-    // 🚀 RESTORED STATUS FILTER
     {
       key: 'status', label: 'Status',
       options: getUniqueStatuses(dateFilteredRows),
       predicate: (row, values) => values.includes(row.status as string),
     },
-    // 🚀 NEW STAGE FILTER
+    // 🚀 FIXED: Uses the strictly ordered list, and maintains the strict single-select logic.
     {
-      key: 'stage', label: 'Stage', 
-      options: getUniqueStages(dateFilteredRows),
-      predicate: (row, values) => values.includes(getFarmerStage(row)),
+      key: 'stage', 
+      label: 'Stage', 
+      options: getOrderedStages(),
+      isSingleSelect: true, // 🚀 Add this flag to tell DataTable to use radio buttons
+      predicate: (row, values) => {
+        if (!values || values.length === 0) return true;
+        return getFarmerStage(row) === values[0]; // You can safely change this back to values[0] now!
+      },
     },
     {
       key: 'district', label: 'District',
@@ -210,7 +213,6 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
       sortable: true, sortValue: r => new Date(r.created_at).getTime(),
       accessor: r => <span className="text-muted-foreground text-sm">{new Date(r.created_at).toLocaleDateString()}</span> 
     },
-    // 🚀 RESTORED: Status Column (Draft vs Submitted)
     {
       key: 'status', header: 'Status', className: 'text-center', headerClassName: 'font-semibold text-center', 
       sortable: true, sortValue: r => (r?.status || '').toLowerCase(),
@@ -218,7 +220,6 @@ export const FarmerTable = ({ rows, onSelect, seOptions = [], onFilteredDataChan
         ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200" variant="outline">Saved Draft</Badge>
         : <Badge variant={r?.status === 'SUBMITTED' ? 'default' : 'secondary'}>{r?.status || 'Pending'}</Badge>,
     },
-    // 🚀 NEW: Text-Based Stage Column
     {
       key: 'stage', header: 'Stage', className: 'text-center', headerClassName: 'font-semibold text-center', 
       sortable: true, sortValue: r => getFarmerStage(r).toLowerCase(),
