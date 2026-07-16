@@ -51,6 +51,7 @@ const extractAllRouteVillages = (route: any): string[] => {
   // Deduplicate using Set to ensure that if a village accidentally appears in both, it counts as 1
   return Array.from(new Set(vills));
 };
+
 const RoutesPage = ({ onLogout }: RoutesPageProps) => {
   const [seList, setSeList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,10 +83,12 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     
     try {
       // 1. Fetch SE Profiles
+      // 🚀 FIXED: Added filter to exclusively select real executives where is_demo is false or null
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select(`id, name, routes!routes_se_id_fkey ( * )`)
+        .select(`id, name, is_demo, routes!routes_se_id_fkey ( * )`)
         .eq('role', 'SE')
+        .or('is_demo.eq.false,is_demo.is.null')
         .order('name');
 
       if (profilesError) throw profilesError;
@@ -289,101 +292,115 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
       </div>
 
       <div className="rounded-md border bg-card flex flex-col">
-  <div className="overflow-x-auto flex-1">
-    <table className="w-full text-sm text-left">
-      <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b">
-        <tr>
-          <th className="px-6 py-3 font-medium">Sales Executive</th>
-          <th className="px-6 py-3 font-medium">Assigned Routes</th>
-          <th className="px-6 py-3 font-medium">Total Villages</th>
-          <th className="px-6 py-3 font-medium text-right">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {loading ? (
-          <tr>
-            <td colSpan={4} className="text-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-            </td>
-          </tr>
-        ) : seList.length === 0 ? (
-          <tr>
-            <td colSpan={4} className="text-center py-12 text-muted-foreground">
-              No SEs found.
-            </td>
-          </tr>
-        ) : (
-          paginatedList.map((se) => {
-            
-            // 🚀 EXACT REPLICA OF TERRITORY SHEET LOGIC
-            // Directly sums the array lengths so it guarantees a 1:1 match with the slide-out sheet.
-            let totalCount = 0;
-
-            se.routes.forEach((r: any) => {
-              if (r.is_custom_others) {
-                totalCount += (r.locations?.[0]?.villages?.length || 0);
-              } else {
-                r.locations?.forEach((loc: any) => {
-                  totalCount += (loc.villages?.length || 0);
-                });
-              }
-            });
-
-            return (
-              <tr key={se.id} className="border-b last:border-0 hover:bg-muted/30">
-                <td className="px-6 py-4 font-medium flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  {se.name || 'Unnamed SE'}
-                </td>
-                <td className="px-6 py-4">
-                  {se.routes.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {se.routes.map((r: any) => (
-                        <span 
-                          key={r.id} 
-                          className={`text-xs px-2 py-1 rounded-md font-medium border ${
-                            r.is_custom_others 
-                              ? 'bg-amber-50 text-amber-700 border-amber-200' 
-                              : 'bg-primary/10 text-primary border-transparent'
-                          }`}
-                        >
-                          {r.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground italic">No routes assigned</span>
-                  )}
-                </td>
-                
-                {/* 🚀 ONLY SHOWING THE EXACT COMBINED TOTAL NUMBER */}
-                <td className="px-6 py-4">
-                  <div className="font-semibold text-foreground text-base">
-                    {totalCount}
-                  </div>
-                </td>
-                
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button variant="outline" size="sm" className="text-primary hover:text-primary border-primary/20 bg-primary/5" onClick={() => setSelectedViewSE(se)}>
-                      View Territories
-                    </Button>
-
-                    {routesAccess.can_edit && (
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedSheetSE(se)}>
-                        Manage Routes
-                      </Button>
-                    )}
-                  </div>
-                </td>
+        <div className="overflow-x-auto flex-1">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b">
+              <tr>
+                <th className="px-6 py-3 font-medium">Sales Executive</th>
+                <th className="px-6 py-3 font-medium">Assigned Routes</th>
+                <th className="px-6 py-3 font-medium">Total Villages</th>
+                <th className="px-6 py-3 font-medium text-right">Actions</th>
               </tr>
-            );
-          })
-        )}
-      </tbody>
-    </table>
-  </div>
-</div>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                  </td>
+                </tr>
+              ) : seList.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-12 text-muted-foreground">
+                    No SEs found.
+                  </td>
+                </tr>
+              ) : (
+                paginatedList.map((se) => {
+                  let totalCount = 0;
+
+                  se.routes.forEach((r: any) => {
+                    if (r.is_custom_others) {
+                      totalCount += (r.locations?.[0]?.villages?.length || 0);
+                    } else {
+                      r.locations?.forEach((loc: any) => {
+                        totalCount += (loc.villages?.length || 0);
+                      });
+                    }
+                  });
+
+                  return (
+                    <tr key={se.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-6 py-4 font-medium flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        {se.name || 'Unnamed SE'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {se.routes.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {se.routes.map((r: any) => (
+                              <span 
+                                key={r.id} 
+                                className={`text-xs px-2 py-1 rounded-md font-medium border ${
+                                  r.is_custom_others 
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                    : 'bg-primary/10 text-primary border-transparent'
+                                }`}
+                              >
+                                {r.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">No routes assigned</span>
+                        )}
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-foreground text-base">
+                          {totalCount}
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="outline" size="sm" className="text-primary hover:text-primary border-primary/20 bg-primary/5" onClick={() => setSelectedViewSE(se)}>
+                            View Territories
+                          </Button>
+
+                          {routesAccess.can_edit && (
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedSheetSE(se)}>
+                              Manage Routes
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      {seList.length > 0 && (
+        <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20">
+          <div className="text-sm text-muted-foreground">
+            Showing <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, seList.length)}</span> of <span className="font-medium">{seList.length}</span> entries
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="gap-1">
+              <ChevronLeft className="h-4 w-4" /><span className="hidden sm:inline">Previous</span>
+            </Button>
+            <div className="text-sm font-medium px-2">Page {currentPage} of {totalPages}</div>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="gap-1">
+              <span className="hidden sm:inline">Next</span><ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <RouteBuilderDialog open={isBuilderOpen} onOpenChange={setIsBuilderOpen} onSuccess={fetchSEsAndRoutes} editData={editData} />
 
       <SERoutesSheet 
