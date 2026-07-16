@@ -199,31 +199,87 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     setAnalyticsLoading(true);
 
     try {
-      const allVillages = seList.flatMap(se => se.routes.flatMap((r: any) => extractAllRouteVillages(r)));
-      const uniqueVillages = Array.from(new Set(allVillages)) as string[];
-      
       let fetchedFarmers: any[] = [];
+      let fetchedDrafts: any[] = [];
 
-      if (uniqueVillages.length > 0) {
-        const { data, error } = await supabase.from('farmers').select('*').in('village', uniqueVillages);
+      // 1. Fetch ALL Real Farmers (Submitted) in batches to bypass Supabase 1000 limit
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('farmers')
+          .select('*')
+          .range(from, from + step - 1);
+        
         if (error) throw error;
-        if (data) fetchedFarmers = data;
+        if (data && data.length > 0) fetchedFarmers.push(...data);
+        if (!data || data.length < step) break;
+        from += step;
       }
 
-      const seEntities = seList.map((se) => {
-        const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
-        const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
-        const seFarmers = fetchedFarmers.filter(f => uniqueSeVillages.includes(f.village));
-        
+      // 2. Fetch ALL Draft Farmers in batches
+      from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('drafts')
+          .select('*')
+          .eq('entity_type', 'farmer')
+          .range(from, from + step - 1);
+          
+        if (error) throw error;
+        if (data && data.length > 0) fetchedDrafts.push(...data);
+        if (!data || data.length < step) break;
+        from += step;
+      }
+
+      // 3. Format Drafts exactly like the main list page maps them
+      const formattedDrafts = fetchedDrafts.map((draft: any) => {
+        const d = draft.draft_data || {};
         return {
-          name: se.name || 'Unknown SE', 
-          villageCount: uniqueSeVillages.length, 
-          farmers: seFarmers
+          id: draft.entity_id,
+          se_id: draft.se_id,
+          full_name: d.fullName || 'Incomplete Farmer',
+          mobile: d.mobile || '—',
+          village: d.village || '—',
+          district: d.city || d.district || '—', 
+          taluka: d.taluka || '—',
+          status: 'DRAFT',
+          is_draft: true, // Used by analytics row filter logic
+          created_at: draft.updated_at,
+          personal_details: { fatherName: d.fatherName, alternateMobile: d.alternateMobile, state: d.state, city: d.city, taluka: d.taluka, pincode: d.pincode },
+          farm_details: {
+            totalLand: d.totalLand, landUnit: d.landUnit, irrigatedLand: d.irrigatedLand, rainFedLand: d.rainFedLand,
+            majorCrops: d.majorCrops, soilType: d.soilType, otherSoilType: d.otherSoilType, waterSource: d.waterSource,
+            otherWaterSource: d.otherWaterSource, irrigationType: d.irrigationType, farmEquipments: d.farmEquipments,
+            otherFarmEquipment: d.otherFarmEquipment, biofertilizer: d.biofertilizer, isIntercropping: d.isIntercropping,
+            sideTrees: d.sideTrees, cattles: d.cattles
+          },
+          history_details: { pastCrops: d.pastCrops },
+          fspp_details: d.fspp_details || {}
         };
       });
 
-      const activeSeEntities = seEntities.filter(e => e.villageCount > 0);
-      setAnalyticsData(activeSeEntities);
+      // 4. Build the column data by anchoring directly to the SE profiles in your list
+      const seEntities = seList.map((se) => {
+        // 🚀 THE FIX: Filter farmers and drafts directly by the SE's unique profile ID!
+        const seFarmers = fetchedFarmers.filter(f => f.se_id === se.id);
+        const seDrafts = formattedDrafts.filter(d => d.se_id === se.id);
+        
+        const combinedFarmersForSE = [...seFarmers, ...seDrafts];
+
+        // Recalculate unique assigned village footprint for the metric table header
+        const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
+        const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
+
+        return {
+          name: se.name || 'Unknown SE', 
+          villageCount: uniqueSeVillages.length, 
+          farmers: combinedFarmersForSE
+        };
+      });
+
+      // Show columns for all active SEs present in your list
+      setAnalyticsData(seEntities);
     } catch (error: any) {
       toast({ title: 'Analytics Error', description: error.message, variant: 'destructive' });
     }
