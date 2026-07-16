@@ -5,16 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
   ChevronLeft, ChevronRight, Map as MapIcon, MapPin, Users, UserCircle, 
-  Loader2, AlertCircle, TrendingUp, LayoutDashboard, Download
+  Loader2, AlertCircle, TrendingUp, LayoutDashboard, Download, Store
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import FarmerDetailSheet from './FarmerDetailSheet';
 import { cn } from '@/lib/utils';
-
-// 🚀 IMPORT THE VISUAL PROGRESS BAR FROM YOUR TABLE FILE
 import { StageProgressBar, getFarmerStage } from './FarmerTable';
-
 
 interface Props {
   se: any | null;
@@ -24,16 +21,12 @@ interface Props {
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
-
-
-
 const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
-  
   const computeMetrics = (farmers: any[], villageCount: number) => {
     if (!farmers || farmers.length === 0) {
       return {
         villageCount, totalFarmers: 0, completed: 0, drafts: 0, 
-        fsppCount: '0', // Defaults to 0 string
+        fsppCount: '0',
         avgScore: 0, totalLand: '0', committedLand: '0', avgLand: '0', 
         topCrops: '—', topSoils: '—', primaryStage: '—', lastVisited: '—'
       };
@@ -43,10 +36,8 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     const completed = farmers.filter(f => !f.is_draft).length;
     const drafts = farmers.filter(f => f.is_draft).length;
     
-    // FSPP Calculations
     const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
     
-    // 🚀 NEW: Dynamic Category Counting (Hiding Zeros)
     const counts: Record<string, number> = {
       'Category A': 0, 'Category B': 0, 'Category C': 0, 'Category D': 0
     };
@@ -56,12 +47,10 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
       if (counts[cat] !== undefined) counts[cat]++;
     });
 
-    // Filter out categories with 0, and map to "Category X: count" format
     const activeCategories = Object.entries(counts)
       .filter(([_, count]) => count > 0)
       .map(([cat, count]) => `${cat}: ${count}`);
 
-    // Build the final string: "Total (Cat A: X, Cat B: Y)"
     const fsppCountDisplay = activeCategories.length > 0
       ? `${fspp.length} (${activeCategories.join(', ')})`
       : `${fspp.length}`;
@@ -128,7 +117,7 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
 
     return {
       villageCount, totalFarmers, completed, drafts, 
-      fsppCount: fsppCountDisplay, // 🚀 Uses the newly formatted string here!
+      fsppCount: fsppCountDisplay,
       avgScore, totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
       topCrops, topSoils, primaryStage, lastVisited
     };
@@ -136,7 +125,6 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
 
   const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
 
-  // Removed the extra breakdown row since it's merged into fsppCount now
   const rows = [
     { label: "Number of Villages", key: "villageCount" },
     { label: "Number of Farmers", key: "totalFarmers" },
@@ -259,7 +247,32 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
 };
 
 
+// 🚀 NEW: Web-specific Dealer Card UI Component
+const WebDealerCard = ({ dealer }: { dealer: any }) => {
+  const dealerName = dealer.dealer_name || dealer['Dealer Name'] || dealer.Dealer_Name || 'Unknown Dealer';
+  const village = dealer.village || dealer.Village || dealer.VILLAGE || '';
+  const contactPerson = dealer.contact_person || dealer['Contact Person'] || dealer.Contact_Person || '';
+  const mobile = dealer.mobile || dealer.Mobile || dealer.MOBILE || '';
+  const address = dealer.address || dealer.Address || dealer.ADDRESS || '';
+  const taluka = dealer.taluka || dealer.Taluka || dealer.TALUKA || '';
+  const district = dealer.district || dealer.District || dealer.DISTRICT || '';
 
+  return (
+    <div className="flex flex-col p-4 bg-white border rounded-xl shadow-sm gap-2 hover:border-primary/50 transition-colors">
+      <div className="flex items-start justify-between">
+        <div>
+          <h4 className="font-bold text-base text-foreground">{dealerName}</h4>
+          <p className="text-sm font-semibold text-muted-foreground mt-1">Contact Person: <span className="text-foreground">{contactPerson || 'N/A'}</span></p>
+          <p className="text-sm font-semibold text-muted-foreground">Mobile: <span className="text-foreground">{mobile || 'N/A'}</span></p>
+        </div>
+        <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-200">{village}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+        <span className="font-bold text-foreground">Address:</span> {address ? `${address}, ` : ''}{taluka}, {district}
+      </p>
+    </div>
+  );
+};
 
 
 export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
@@ -268,6 +281,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   const [activeVillage, setActiveVillage] = useState<string | null>(null);
   const [displayRoutes, setDisplayRoutes] = useState<any[]>([]);
   const [farmers, setFarmers] = useState<any[]>([]);
+  const [tempDealers, setTempDealers] = useState<any[]>([]); // 🚀 NEW: Store temp dealers
   const [loading, setLoading] = useState(false);
   const [selectedFarmer, setSelectedFarmer] = useState<any | null>(null);
 
@@ -291,23 +305,23 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
       });
     });
 
-    // 🚀 NEW: Add the Farm Cards fetch to establish absolute ground truth for the progress bar
-    const [farmersRes, draftsRes, farmCardsRes] = await Promise.all([
+    // 🚀 NEW: Fetch Temp Dealers alongside everything else
+    const [farmersRes, draftsRes, farmCardsRes, tempDealersRes] = await Promise.all([
       supabase.from('farmers').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('status', 'SUBMITTED'),
       supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer'),
-      (supabase as any).from('farm_cards').select('farmer_id').eq('se_id', se.id)
+      (supabase as any).from('farm_cards').select('farmer_id').eq('se_id', se.id),
+      supabase.from('temp_dealers').select('*') // Fetch dealers to map into the routes
     ]);
 
-    // Fast lookup Set of all farmers who have at least one farm card
+    setTempDealers(tempDealersRes.data || []);
+
     const farmersWithCards = new Set((farmCardsRes.data || []).map((fc: any) => fc.farmer_id));
 
-    // Map through submitted farmers and attach Ground Truth card status
     const submittedFarmers = (farmersRes.data || []).map(f => ({
       ...f,
       has_farm_card: farmersWithCards.has(f.id)
     }));
 
-    // Map through drafts and attach Ground Truth card status
     const draftFarmers = (draftsRes.data || []).map(draft => {
         const data = draft.draft_data as any; 
         const id = draft.entity_id || draft.id;
@@ -321,7 +335,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
           created_at: draft.created_at,
           updated_at: draft.updated_at,
           fspp_details: data?.fspp_details || {},
-          has_farm_card: farmersWithCards.has(id), // 🚀 Ground Truth attached!
+          has_farm_card: farmersWithCards.has(id),
           personal_details: { village: data?.village || '' },
           farm_details: {
             totalLand: data?.totalLand || 0,
@@ -383,6 +397,33 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     return routeFarmers;
   };
 
+  // 🚀 NEW: Helper to get dealers matching a village (case-insensitive)
+  const getDealersForVillage = (villageName: string) => {
+    const vSafe = villageName.trim().toLowerCase();
+    return tempDealers.filter(d => {
+      const vName = d.village || d.Village || d.VILLAGE || '';
+      return String(vName).trim().toLowerCase() === vSafe;
+    });
+  };
+
+  // 🚀 NEW: Helper to aggregate all dealers across a route's villages
+  const getDealersForRoute = (route: any) => {
+    let routeDealers: any[] = [];
+    if (route.is_custom_others) {
+      route.locations[0].villages.forEach((v: string) => { 
+        routeDealers = [...routeDealers, ...getDealersForVillage(v)]; 
+      });
+    } else {
+      route.locations?.forEach((loc: any) => {
+        loc.villages?.forEach((v: string) => { 
+          routeDealers = [...routeDealers, ...getDealersForVillage(v)]; 
+        });
+      });
+    }
+    return routeDealers;
+  };
+
+
   if (!se) return null;
 
   return (
@@ -419,11 +460,14 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
             ) : (
               <div className="px-6 py-4">
                 
+                {/* ---------- ROUTE LEVEL ---------- */}
                 {level === 'routes' && (
                   <Tabs defaultValue="list" className="w-full">
-                    <TabsList className="w-full bg-muted/50 p-1 mb-4">
-                      <TabsTrigger value="list" className="flex-1 gap-2"><MapIcon className="h-4 w-4" /> Route List</TabsTrigger>
-                      <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
+                    {/* 🚀 Changed to 3 columns to fit the Dealers tab */}
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-3">
+                      <TabsTrigger value="list" className="gap-2"><MapIcon className="h-4 w-4" /> Routes</TabsTrigger>
+                      <TabsTrigger value="dealers" className="gap-2"><Store className="h-4 w-4" /> Dealers</TabsTrigger>
+                      <TabsTrigger value="analytics" className="gap-2"><TrendingUp className="h-4 w-4" /> Analytics</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="list" className="space-y-3 outline-none">
@@ -450,6 +494,26 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                         );
                       })}
                     </TabsContent>
+
+                    {/* 🚀 NEW: Route-Level Dealers Tab */}
+                    <TabsContent value="dealers" className="space-y-4 outline-none">
+                      {displayRoutes.map((route: any) => {
+                        const dealers = getDealersForRoute(route);
+                        if (dealers.length === 0) return null;
+                        
+                        return (
+                          <div key={`dlr-rt-${route.id}`} className="mb-6">
+                            <h3 className="font-bold text-primary mb-3 px-1">{route.name} <span className="text-muted-foreground text-sm font-medium">({dealers.length} Dealers)</span></h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                              {dealers.map((d, idx) => <WebDealerCard key={idx} dealer={d} />)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {displayRoutes.every(r => getDealersForRoute(r).length === 0) && (
+                        <div className="text-center py-10 text-muted-foreground text-sm font-medium">No registered prospect dealers found across these routes.</div>
+                      )}
+                    </TabsContent>
                     
                     <TabsContent value="analytics" className="outline-none">
                       <AnalyticsTable 
@@ -463,23 +527,16 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                   </Tabs>
                 )}
 
+                {/* ---------- VILLAGES LEVEL ---------- */}
                 {level === 'villages' && activeRoute && (
                   <Tabs defaultValue="list" className="w-full">
-                    <TabsList className="w-full bg-muted/50 p-1 mb-4">
-                      <TabsTrigger value="list" className="flex-1 gap-2"><MapPin className="h-4 w-4" /> Village List</TabsTrigger>
-                      <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
+                    {/* 🚀 Changed to 3 columns to fit the Dealers tab */}
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-3">
+                      <TabsTrigger value="list" className="gap-2"><MapPin className="h-4 w-4" /> Villages</TabsTrigger>
+                      <TabsTrigger value="dealers" className="gap-2"><Store className="h-4 w-4" /> Dealers</TabsTrigger>
+                      <TabsTrigger value="analytics" className="gap-2"><TrendingUp className="h-4 w-4" /> Analytics</TabsTrigger>
                     </TabsList>
                     
-                    <TabsContent value="analytics" className="outline-none">
-                      <AnalyticsTable 
-                        entities={(activeRoute.locations?.flatMap((loc: any) => loc.villages || []) || []).map((v: string) => ({
-                          name: v,
-                          farmers: getFarmersForVillage(v),
-                          villageCount: 1
-                        }))} 
-                      />
-                    </TabsContent>
-
                     <TabsContent value="list" className="space-y-3 outline-none">
                       {activeRoute.locations?.flatMap((loc: any) => loc.villages || []).map((v: string, i: number) => {
                         const fCount = getFarmersForVillage(v).length;
@@ -496,15 +553,47 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                         );
                       })}
                     </TabsContent>
+
+                    {/* 🚀 NEW: Village-Level Dealers Tab */}
+                    <TabsContent value="dealers" className="space-y-4 outline-none">
+                      {activeRoute.locations?.flatMap((loc: any) => loc.villages || []).map((v: string) => {
+                        const dealers = getDealersForVillage(v);
+                        if (dealers.length === 0) return null;
+
+                        return (
+                          <div key={`dlr-vl-${v}`} className="mb-6">
+                            <h3 className="font-bold text-primary mb-3 px-1">{v} <span className="text-muted-foreground text-sm font-medium">({dealers.length} Dealers)</span></h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {dealers.map((d, idx) => <WebDealerCard key={idx} dealer={d} />)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {activeRoute.locations?.flatMap((loc: any) => loc.villages || []).every((v: string) => getDealersForVillage(v).length === 0) && (
+                        <div className="text-center py-10 text-muted-foreground text-sm font-medium">No registered prospect dealers found in these villages.</div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="analytics" className="outline-none">
+                      <AnalyticsTable 
+                        entities={(activeRoute.locations?.flatMap((loc: any) => loc.villages || []) || []).map((v: string) => ({
+                          name: v,
+                          farmers: getFarmersForVillage(v),
+                          villageCount: 1
+                        }))} 
+                      />
+                    </TabsContent>
                   </Tabs>
                 )}
 
-                {/* 🚀 LEVEL 3: FARMERS LIST WITH GROUND-TRUTH PROGRESS BAR */}
+                {/* ---------- FARMERS LEVEL (Specific Village Selected) ---------- */}
                 {level === 'farmers' && activeVillage && (
                   <Tabs defaultValue="list" className="w-full">
-                    <TabsList className="w-full bg-muted/50 p-1 mb-4">
-                      <TabsTrigger value="list" className="flex-1 gap-2"><Users className="h-4 w-4" /> Farmer List</TabsTrigger>
-                      <TabsTrigger value="analytics" className="flex-1 gap-2"><TrendingUp className="h-4 w-4" /> Analytics Table</TabsTrigger>
+                    {/* 🚀 Changed to 3 columns to fit the Dealers tab */}
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-3">
+                      <TabsTrigger value="list" className="gap-2"><Users className="h-4 w-4" /> Farmers</TabsTrigger>
+                      <TabsTrigger value="dealers" className="gap-2"><Store className="h-4 w-4" /> Dealers</TabsTrigger>
+                      <TabsTrigger value="analytics" className="gap-2"><TrendingUp className="h-4 w-4" /> Analytics</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="analytics" className="outline-none">
@@ -515,6 +604,31 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                           villageCount: 1
                         }]} 
                       />
+                    </TabsContent>
+
+                    {/* 🚀 NEW: Specific Village-Level Dealers Tab */}
+                    <TabsContent value="dealers" className="space-y-4 outline-none">
+                      {(() => {
+                        const dealers = getDealersForVillage(activeVillage);
+                        if (dealers.length === 0) {
+                          return (
+                            <div className="text-center py-10 text-muted-foreground text-sm font-medium">
+                              No registered prospect dealers found in {activeVillage}.
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div className="mb-6">
+                            <h3 className="font-bold text-primary mb-3 px-1">
+                              {activeVillage} <span className="text-muted-foreground text-sm font-medium">({dealers.length} Dealers)</span>
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {dealers.map((d, idx) => <WebDealerCard key={idx} dealer={d} />)}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </TabsContent>
 
                     <TabsContent value="list" className="space-y-3 outline-none">
