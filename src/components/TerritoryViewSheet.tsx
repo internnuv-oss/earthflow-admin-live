@@ -21,7 +21,9 @@ interface Props {
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
-const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
+
+export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
+  
   const computeMetrics = (farmers: any[], villageCount: number) => {
     if (!farmers || farmers.length === 0) {
       return {
@@ -123,7 +125,16 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     };
   };
 
-  const columnData = entities.map(e => computeMetrics(e.farmers, e.villageCount));
+  const allFarmers = entities.flatMap(e => e.farmers || []);
+  const totalVillageCount = entities.reduce((sum, e) => sum + (e.villageCount || 0), 0);
+  
+  // 🚀 FIXED: The TOTAL entity is now placed at the very beginning of the array!
+  const renderEntities = [
+    { name: "TOTAL (ALL)", farmers: allFarmers, villageCount: totalVillageCount },
+    ...entities
+  ];
+
+  const columnData = renderEntities.map(e => computeMetrics(e.farmers, e.villageCount));
 
   const rows = [
     { label: "Number of Villages", key: "villageCount" },
@@ -145,10 +156,14 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const headersHtml = `<th>Metrics</th>` + entities.map(e => `<th>${e.name}</th>`).join('');
+    const headersHtml = `<th>Metrics</th>` + renderEntities.map(e => `<th>${e.name}</th>`).join('');
 
     const rowsHtml = rows.map((row) => {
-      const rowDataHtml = columnData.map(data => `<td>${data[row.key as keyof typeof data]}</td>`).join('');
+      const rowDataHtml = columnData.map((data, idx) => {
+        // 🚀 FIXED: Target index 0 for the Total styling in PDF
+        const isTotalCol = idx === 0;
+        return `<td style="${isTotalCol ? 'background-color: #f0fdf4; font-weight: bold;' : ''}">${data[row.key as keyof typeof data]}</td>`;
+      }).join('');
       return `<tr>
           <td><strong>${row.label}</strong></td>
           ${rowDataHtml}
@@ -216,11 +231,16 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
                 <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap sticky left-0 top-0 bg-muted z-30 border-r border-b shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-border">
                   Metrics
                 </th>
-                {entities.map((e, i) => (
-                  <th key={i} className="px-4 py-3 font-bold text-foreground whitespace-nowrap min-w-[180px] text-center border-r border-b last:border-r-0 sticky top-0 bg-muted z-20 outline outline-1 outline-border">
-                    {e.name}
-                  </th>
-                ))}
+                {renderEntities.map((e, i) => {
+                  // 🚀 FIXED: Target index 0 for the Total styling in the table header
+                  const isTotalCol = i === 0;
+                  return (
+                    <th key={i} className={`px-4 py-3 font-bold whitespace-nowrap min-w-[180px] text-center border-r border-b last:border-r-0 sticky top-0 z-20 outline outline-1 outline-border
+                      ${isTotalCol ? 'bg-primary/10 text-primary shadow-inner' : 'bg-muted text-foreground'}`}>
+                      {e.name}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -229,13 +249,18 @@ const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[]
                   <td className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-white z-10 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
                     {row.label}
                   </td>
-                  {columnData.map((data, colIdx) => (
-                    <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 font-medium text-foreground/90 
-                      ${['topCrops', 'topSoils', 'primaryStage', 'fsppCount'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : 'whitespace-nowrap'}`}
-                    >
-                      {data[row.key as keyof typeof data]}
-                    </td>
-                  ))}
+                  {columnData.map((data, colIdx) => {
+                    // 🚀 FIXED: Target index 0 for the Total styling in the table body cells
+                    const isTotalCol = colIdx === 0;
+                    return (
+                      <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 
+                        ${['topCrops', 'topSoils', 'primaryStage', 'fsppCount'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : 'whitespace-nowrap'}
+                        ${isTotalCol ? 'bg-primary/[0.03] font-bold text-primary border-primary/20' : 'font-medium'}`}
+                      >
+                        {data[row.key as keyof typeof data]}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -298,14 +323,37 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     if (!se) return;
     setLoading(true);
 
+    // 🚀 1. Filter out the dynamically generated 'Others' route passed from RoutesPage
+    const pureRoutes = (se.routes || []).filter((r: any) => !r.is_custom_others);
+
     const officialVillages = new Set<string>();
-    (se.routes || []).forEach((route: any) => {
-      route.locations?.forEach((loc: any) => {
-        loc.villages?.forEach((v: string) => officialVillages.add(v.trim().toLowerCase()));
-      });
+    
+    // 🚀 2. FIX: Use the exact same structural extraction logic as the main page helper
+    pureRoutes.forEach((route: any) => {
+      // Extract from standard location arrays
+      if (route.locations && Array.isArray(route.locations)) {
+        route.locations.forEach((loc: any) => {
+          if (loc.villages && Array.isArray(loc.villages)) {
+            loc.villages.forEach((v: string) => officialVillages.add(v.trim().toLowerCase()));
+          }
+          const locOther = loc.otherVillages || loc.other_villages || loc.other_route_villages;
+          if (Array.isArray(locOther)) {
+            locOther.forEach((v: string) => officialVillages.add(v.trim().toLowerCase()));
+          } else if (typeof locOther === 'string') {
+            locOther.split(',').forEach((v: string) => { if (v.trim()) officialVillages.add(v.trim().toLowerCase()); });
+          }
+        });
+      }
+
+      // Extract from top-level column routes directly
+      const routeOther = route.otherVillages || route.other_villages || route.other_route_villages || route.other_route;
+      if (Array.isArray(routeOther)) {
+        routeOther.forEach((v: string) => officialVillages.add(v.trim().toLowerCase()));
+      } else if (typeof routeOther === 'string') {
+        routeOther.split(',').forEach((v: string) => { if (v.trim()) officialVillages.add(v.trim().toLowerCase()); });
+      }
     });
 
-    // 🚀 NEW: Fetch Temp Dealers alongside everything else
     const [farmersRes, draftsRes, farmCardsRes, tempDealersRes] = await Promise.all([
       supabase.from('farmers').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('status', 'SUBMITTED'),
       supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer'),
@@ -331,12 +379,12 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
           is_draft: true,
           full_name: data?.fullName || data?.full_name || 'Unnamed Draft', 
           mobile: data?.mobile || 'No Mobile',
-          village: data?.village || '',
+          village: data?.village || data?.personal_details?.village || '',
           created_at: draft.created_at,
           updated_at: draft.updated_at,
           fspp_details: data?.fspp_details || {},
           has_farm_card: farmersWithCards.has(id),
-          personal_details: { village: data?.village || '' },
+          personal_details: { village: data?.village || data?.personal_details?.village || '' },
           farm_details: {
             totalLand: data?.totalLand || 0,
             majorCrops: data?.majorCrops || [],
@@ -365,13 +413,14 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
         is_custom_others: true,
         locations: [{ villages: Array.from(orphanVillagesMap.values()) }]
       };
-      setDisplayRoutes([...(se.routes || []), othersRoute]);
+      setDisplayRoutes([...pureRoutes, othersRoute]);
     } else {
-      setDisplayRoutes(se.routes || []);
+      setDisplayRoutes(pureRoutes);
     }
 
     setLoading(false);
   };
+
 
   const getVillageCountForRoute = (route: any) => {
     if (route.is_custom_others) return route.locations[0].villages.length;

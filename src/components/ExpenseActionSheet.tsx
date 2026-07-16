@@ -12,7 +12,7 @@ interface Props {
   open: boolean;
   expense: any;
   onClose: () => void;
-  onUpdate: (id: string, status: string, newAmount?: number) => void; // 🚀 Added optional newAmount parameters
+  onUpdate: (id: string, status: string, newAmount?: number) => void;
   canEdit: boolean;
 }
 
@@ -20,7 +20,6 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
   const [updating, setUpdating] = useState(false);
   const { toast } = useToast();
 
-  // 🚀 NEW: Track separate selection approvals for TA and DA components
   const [approveTA, setApproveTA] = useState(true);
   const [approveDA, setApproveDA] = useState(true);
 
@@ -33,6 +32,9 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
   }, [open, expense]);
 
   if (!expense) return null;
+
+  // 🚀 Helper to check if the expense is currently actionable (Pending OR Queried)
+  const isActionable = expense.status === 'Pending' || expense.status === 'Queried';
 
   // Safe parsing for shift data
   const shift = expense.shifts;
@@ -47,7 +49,6 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
   const taAmount = distanceUsed * 4;
   const daAmount = distanceUsed > 60 ? 150 : 0;
 
-  // 🚀 Live screen summary depending on current checked states
   const liveTotalCalculated = (approveTA ? taAmount : 0) + (approveDA ? daAmount : 0);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -56,7 +57,6 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
     let finalAmount = Number(expense.amount);
     let finalRemarks = expense.remarks || '';
 
-    // 🚀 Handle custom amount scaling logic if approved with altered selections
     if (newStatus === 'Approved' && expense.category === 'TA/DA') {
       finalAmount = liveTotalCalculated;
       
@@ -87,7 +87,7 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
       toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Expense Updated', description: `Status changed to ${newStatus}` });
-      onUpdate(expense.id, newStatus, finalAmount); // Pass down adjusted amount back to list view hook
+      onUpdate(expense.id, newStatus, finalAmount); 
       onClose();
     }
   };
@@ -122,7 +122,8 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
             <p className="text-sm font-semibold text-primary uppercase">{expense.category}</p>
             <h2 className="text-4xl font-bold text-foreground mt-1">
-              ₹{Number(expense.status === 'Pending' && expense.category === 'TA/DA' ? liveTotalCalculated : expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              {/* 🚀 Changed to use isActionable */}
+              ₹{Number(isActionable && expense.category === 'TA/DA' ? liveTotalCalculated : expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </h2>
           </div>
 
@@ -149,13 +150,12 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
               {/* Allowance Math with Selectable Box Approvals */}
               <div className="bg-muted/30 rounded-md p-3 text-sm space-y-3 border">
                 
-                {/* 🚀 TA Checkbox */}
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Checkbox 
                       id="approve-ta" 
                       checked={approveTA} 
-                      disabled={!canEdit || expense.status !== 'Pending'} 
+                      disabled={!canEdit || !isActionable} // 🚀 Changed to use isActionable
                       onCheckedChange={(v) => setApproveTA(!!v)}
                     />
                     <Label htmlFor="approve-ta" className="text-muted-foreground cursor-pointer text-sm">Travel Allowance (₹4/km)</Label>
@@ -163,14 +163,13 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                   <span className={`font-semibold ${approveTA ? '' : 'line-through text-muted-foreground/60'}`}>₹{taAmount.toFixed(2)}</span>
                 </div>
 
-                {/* 🚀 DA Checkbox (Only visible if DA is greater than 0) */}
                 {daAmount > 0 && (
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <Checkbox 
                         id="approve-da" 
                         checked={approveDA} 
-                        disabled={!canEdit || expense.status !== 'Pending'} 
+                        disabled={!canEdit || !isActionable} // 🚀 Changed to use isActionable
                         onCheckedChange={(v) => setApproveDA(!!v)}
                       />
                       <Label htmlFor="approve-da" className="text-muted-foreground cursor-pointer text-sm">Daily Allowance (&gt; 60km)</Label>
@@ -180,7 +179,8 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                 )}
 
                 <div className="flex justify-between border-t pt-2 mt-2 font-bold text-base">
-                  <span>{expense.status === 'Pending' ? 'Adjusted Total' : 'Total Calculated'}</span>
+                  {/* 🚀 Changed to use isActionable */}
+                  <span>{isActionable ? 'Adjusted Total' : 'Total Calculated'}</span>
                   <span>₹{liveTotalCalculated.toFixed(2)}</span>
                 </div>
               </div>
@@ -227,14 +227,18 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           </div>
         </div>
 
-        {canEdit && expense.status === 'Pending' && (
+        {/* 🚀 Changed the condition here to include 'Queried' statuses */}
+        {canEdit && isActionable && (
           <SheetFooter className="px-6 py-4 border-t bg-muted/10 grid grid-cols-3 gap-3">
             <Button variant="outline" className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200" disabled={updating} onClick={() => handleStatusChange('Rejected')}>
               <XCircle className="h-4 w-4 mr-2" /> Reject
             </Button>
+            
+            {/* If it's already queried, we can let them click Query again to add new notes if you build that later, or just leave it */}
             <Button variant="outline" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" disabled={updating} onClick={() => handleStatusChange('Queried')}>
               <HelpCircle className="h-4 w-4 mr-2" /> Query
             </Button>
+            
             <Button className="bg-green-600 text-white hover:bg-green-700" disabled={updating} onClick={() => handleStatusChange('Approved')}>
               {updating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />} Approve
             </Button>

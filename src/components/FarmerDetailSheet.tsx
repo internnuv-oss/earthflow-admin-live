@@ -470,17 +470,18 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
               </div>
 
               <Section title="Evaluation Metrics">
-                <KeyValueGrid data={{
-                  "Mindset A (Innovator)": `${fspp.mindsetA} pts`,
-                  "Mindset B (Investment)": `${fspp.mindsetB} pts`,
-                  "MindsetC (Sustainability)": `${fspp.mindsetC} pts`,
-                  "Mindset D (Compliance)": `${fspp.mindsetD} pts`,
-                  "Biofertilizer Awareness": `${fspp.bioAwareness} pts`,
-                  "GLS Knowledge": `${fspp.glsKnowledge} pts`,
-                  "Seasonal Expense": `₹ ${fspp.seasonalExpense}`,
-                  "Evaluation Date": new Date(fspp.evaluationDate).toLocaleDateString()
-                }} />
-              </Section>
+  <KeyValueGrid data={{
+    "Mindset A (Innovator)": fspp.mindsetA || '—',
+    "Mindset B (Investment)": fspp.mindsetB || '—',
+    "Mindset C (Sustainability)": fspp.mindsetC || '—',
+    "Mindset D (Compliance)": fspp.mindsetD || '—',
+    "Biofertilizer Awareness": fspp.bioAwareness || '—',
+    "GLS Knowledge": fspp.glsKnowledge || '—',
+    "Seasonal Expense": fspp.seasonalExpense || '—',
+    "Knockout Flag?": fspp.isKnockout ? 'Yes (Disqualified)' : 'No',
+    "Evaluation Date": fspp.evaluationDate ? new Date(fspp.evaluationDate).toLocaleDateString() : '—'
+  }} />
+</Section>
             </div>
           )}
 
