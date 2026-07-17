@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import AppLayout from '@/components/AppLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,11 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Plus, Settings, Ruler, Leaf, ListTree, AlertCircle, Trash2, Map, FlaskConical, Save, CheckSquare, Table2, ChevronUp, ChevronDown, Eye } from 'lucide-react';
+import { Loader2, Plus, Settings, Ruler, Leaf, ListTree, AlertCircle, Trash2, Map, FlaskConical, Save, CheckSquare, ChevronUp, ChevronDown, Eye, Layers, Edit2, Image as ImageIcon } from 'lucide-react';
+
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
+
 
 export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
-  // 🚀 FIXED: Default tab is now 'crops'
   const [activeTab, setActiveTab] = useState('crops'); 
   const [loading, setLoading] = useState(false);
   
@@ -29,6 +32,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [glsProducts, setGlsProducts] = useState<any[]>([]); 
   const [appTypes, setAppTypes] = useState<string[]>(['Spray', 'Drench', 'Broadcasting', 'Basal Dose', 'Seed Treatment', 'Foliar']);
   
+  // SOP Groups States
+  const [sopGroups, setSopGroups] = useState<any[]>([]);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<any>(null);
+  const [groupForm, setGroupForm] = useState({ crops: [] as string[] });
+
   // SPREADSHEET BUILDER STATES
   const [layoutCategory, setLayoutCategory] = useState<string>('');
   const [layoutCrops, setLayoutCrops] = useState<string[]>([]);
@@ -49,7 +58,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [isGlsOpen, setIsGlsOpen] = useState(false);
   const [isMapUomOpen, setIsMapUomOpen] = useState(false);
 
-  // 🚀 NEW: Crop SOP Viewer States
+  // Crop SOP Viewer States
   const [isSopViewOpen, setIsSopViewOpen] = useState(false);
   const [viewCrop, setViewCrop] = useState<any>(null);
   const [viewSopData, setViewSopData] = useState<any[]>([]);
@@ -65,8 +74,13 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [newStage, setNewStage] = useState({ name: '' });
   const [newUom, setNewUom] = useState({ name: '', symbol: '' });
-  const [newParam, setNewParam] = useState({ label: '', type: 'Numeric', options: '' });
-  const [newGls, setNewGls] = useState({ name: '', ingredients: '' });
+  const [newParam, setNewParam] = useState({ 
+    label: '', type: 'Numeric', options: '', uoms: [] as string[], defaultUom: '' 
+  });
+  const [newGls, setNewGls] = useState({
+    name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: ''
+  });
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const db = supabase as any;
 
@@ -79,7 +93,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   }, [layoutStages]);
 
   useEffect(() => {
-    if (layoutCrops.length === 1 && activeSopStage) {
+    if (layoutCrops.length > 0 && activeSopStage) {
       loadExistingSOP(layoutCrops[0], activeSopStage);
     } else {
       setApplications([]);
@@ -90,12 +104,13 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
 
   const fetchMasters = async () => {
     setLoading(true);
-    const [cropsRes, stagesRes, uomRes, paramsRes, glsRes] = await Promise.all([
+    const [cropsRes, stagesRes, uomRes, paramsRes, glsRes, groupsRes] = await Promise.all([
       db.from('master_crops').select('*').order('crop_name'),
       db.from('master_crop_stages').select('*').order('stage_name'),
       db.from('master_uom').select('*').order('uom_name'),
       db.from('master_parameters').select('*').order('parameter_label'),
-      db.from('master_gls_products').select('*').order('product_name')
+      db.from('master_gls_products').select('*').order('product_name'),
+      db.from('sop_groups').select('*').order('created_at', { ascending: false })
     ]);
 
     if (cropsRes.data) setCrops(cropsRes.data);
@@ -103,6 +118,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     if (uomRes.data) setUoms(uomRes.data);
     if (paramsRes.data) setParameters(paramsRes.data);
     if (glsRes.data) setGlsProducts(glsRes.data);
+    if (groupsRes.data) setSopGroups(groupsRes.data);
     setLoading(false);
   };
 
@@ -133,7 +149,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     setLoading(false);
   };
 
-  // 🚀 NEW: Fetch the Entire Format.xlsx style table for a specific crop
   const handleViewCropSop = async (crop: any) => {
     setViewCrop(crop);
     setIsSopViewOpen(true);
@@ -158,7 +173,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     if (error) {
       toast({ title: 'Error fetching SOP', description: error.message, variant: 'destructive' });
     } else if (data) {
-      // Sort applications chronologically by DAS
       const formattedData = data.map((stage: any) => {
         stage.sop_applications.sort((a: any, b: any) => Number(a.das) - Number(b.das));
         return stage;
@@ -167,13 +181,158 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     }
     setLoadingViewSop(false);
   };
+// 🚀 NEW: Creates a flat list of ALL crops currently assigned to ANY group to prevent double-booking
+
+
+  // Deep clone SOP from a source crop to multiple target crops
+  const cloneSopToNewCrops = async (sourceCropId: string, targetCropIds: string[]) => {
+    const { data: sourceStages } = await db.from('sop_crop_stages').select('*').eq('crop_id', sourceCropId);
+    if (!sourceStages || sourceStages.length === 0) return;
+
+    for (const targetCropId of targetCropIds) {
+      await db.from('sop_crop_stages').delete().eq('crop_id', targetCropId);
+
+      for (const stage of sourceStages) {
+        const { data: newStage } = await db.from('sop_crop_stages').insert([{
+          crop_id: targetCropId,
+          stage_id: stage.stage_id,
+          stage_sequence: stage.stage_sequence,
+          chemical_recommendation_and_dosage: stage.chemical_recommendation_and_dosage
+        }]).select('id').single();
+
+        if (newStage) {
+          const { data: sourceApps } = await db.from('sop_applications').select('*').eq('sop_crop_stage_id', stage.id);
+          if (sourceApps && sourceApps.length > 0) {
+            const newApps = sourceApps.map((app: any) => {
+              const { id, ...rest } = app;
+              return { ...rest, sop_crop_stage_id: newStage.id };
+            });
+            await db.from('sop_applications').insert(newApps);
+          }
+
+          const { data: sourceParams } = await db.from('sop_parameters').select('*').eq('sop_crop_stage_id', stage.id);
+          if (sourceParams && sourceParams.length > 0) {
+            const newParams = sourceParams.map((p: any) => {
+              const { id, ...rest } = p;
+              return { ...rest, sop_crop_stage_id: newStage.id };
+            });
+            await db.from('sop_parameters').insert(newParams);
+          }
+        }
+      }
+    }
+  };
+
+  // 🚀 GROUP MANAGEMENT LOGIC
+  const openEditGroup = (group: any) => {
+    setEditingGroup(group);
+    setGroupForm({ crops: group.crop_ids || [] });
+    setIsGroupModalOpen(true);
+  };
+
+  const saveGroup = async () => {
+    if (!editingGroup) return;
+    setLoading(true);
+
+    const oldCrops = editingGroup.crop_ids || [];
+    const newlyAddedCrops = groupForm.crops.filter(id => !oldCrops.includes(id));
+    const removedCrops = oldCrops.filter((id: string) => !groupForm.crops.includes(id));
+    const sourceCropId = oldCrops.length > 0 ? oldCrops[0] : groupForm.crops[0];
+
+    // 🚀 1. SAFELY WIPE SOP DATA FOR REMOVED CROPS
+    if (removedCrops.length > 0) {
+      toast({ title: "Cleaning Up", description: "Wiping previous SOP schedules for removed crops..." });
+      for (const cropId of removedCrops) {
+        const { data: stagesToDel } = await db.from('sop_crop_stages').select('id').eq('crop_id', cropId);
+        if (stagesToDel && stagesToDel.length > 0) {
+          const stageIds = stagesToDel.map((s: any) => s.id);
+          await db.from('sop_applications').delete().in('sop_crop_stage_id', stageIds);
+          await db.from('sop_parameters').delete().in('sop_crop_stage_id', stageIds);
+          await db.from('sop_crop_stages').delete().in('id', stageIds);
+        }
+      }
+    }
+
+    // 🚀 2. CLONE SOP FOR NEW CROPS
+    if (sourceCropId && newlyAddedCrops.length > 0) {
+      toast({ title: "Cloning SOP", description: "Applying group SOP to the newly added crops..." });
+      await cloneSopToNewCrops(sourceCropId, newlyAddedCrops);
+    }
+
+    // 🚀 3. UPDATE THE GROUP
+    const { error } = await db.from('sop_groups').update({
+      crop_ids: groupForm.crops
+    }).eq('id', editingGroup.id);
+
+    if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
+    else toast({ title: "Success", description: "Group updated & SOP applied successfully." });
+      
+    setIsGroupModalOpen(false);
+    fetchMasters();
+  };
+
+  const deleteGroup = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this group? The crops will keep their SOPs, but the grouping link will be removed.")) return;
+    const { error } = await db.from('sop_groups').delete().eq('id', id);
+    if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
+    else fetchMasters();
+  };
+
+  const handleEditGroupSop = async (group: any) => {
+    setLoading(true);
+    setLayoutCategory(group.category);
+    setLayoutCrops(group.crop_ids || []);
+
+    // 🚀 FIX: Fetch distinct stages used by these crops to populate the SOP Builder
+    const { data: stagesData } = await db
+      .from('sop_crop_stages')
+      .select('stage_id')
+      .in('crop_id', group.crop_ids)
+      .order('stage_sequence', { ascending: true });
+
+    if (stagesData) {
+      // 🚀 FIXED: Explicitly typed as string[] and cast s.stage_id to String
+      const uniqueStageIds: string[] = Array.from(new Set(stagesData.map((s: any) => String(s.stage_id))));
+      setLayoutStages(uniqueStageIds);
+      
+      // Set the first stage as active
+      if (uniqueStageIds.length > 0) {
+        setActiveSopStage(uniqueStageIds[0]);
+        // Load the data for the first crop and first stage
+        await loadExistingSOP(group.crop_ids[0], uniqueStageIds[0]);
+      }
+    }
+
+    setActiveTab('layout'); // Jump to the SOP Builder tab
+    setLoading(false);
+    toast({ title: "Loaded Group", description: "Crops and stages populated in SOP Builder." });
+  };
+
+  const handleViewGroupSop = (group: any) => {
+    if (!group.crop_ids || group.crop_ids.length === 0) {
+      return toast({ title: "Empty Group", description: "No crops in this group to preview.", variant: "destructive" });
+    }
+    const representativeCrop = crops.find(c => c.id === group.crop_ids[0]);
+    if (representativeCrop) {
+      handleViewCropSop({ ...representativeCrop, crop_name: `${group.group_name} (Preview)` });
+    }
+  };
+  const allAssignedCropIds = Array.from(new Set(sopGroups.flatMap(g => g.crop_ids || [])));
 
   const uniqueCategories = Array.from(new Set(crops.map(c => c.crop_category).filter(Boolean)));
-  const filteredCropsForLayout = crops.filter(c => layoutCategory ? c.crop_category === layoutCategory : true);
+  
+  // 🚀 FIXED: Hide crops that are already in a group from the SOP Builder, 
+  // UNLESS they are actively loaded into the builder right now.
+  const filteredCropsForLayout = crops.filter(c => {
+    const matchesCategory = layoutCategory ? c.crop_category === layoutCategory : true;
+    const isAvailable = !allAssignedCropIds.includes(c.id) || layoutCrops.includes(c.id);
+    return matchesCategory && isAvailable;
+  });
 
   const toggleLayoutCrop = (cropId: string) => { setLayoutCrops(prev => prev.includes(cropId) ? prev.filter(id => id !== cropId) : [...prev, cropId]); };
   const toggleLayoutStage = (stageId: string) => { setLayoutStages(prev => prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]); };
   const selectAllFilteredCrops = () => setLayoutCrops(filteredCropsForLayout.map(c => c.id));
+  const toggleGroupCrop = (cropId: string) => { setGroupForm(prev => ({ crops: prev.crops.includes(cropId) ? prev.crops.filter(id => id !== cropId) : [...prev.crops, cropId] })); };
 
   const moveStageUp = (index: number) => {
     if (index === 0) return;
@@ -205,6 +364,37 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
           }
         }
       }
+
+      // 🚀 BULLETPROOF AUTO-GROUPING
+      if (layoutCrops.length > 0) {
+        // Automatically figure out the category from the first selected crop if the dropdown is empty
+        const derivedCategory = layoutCategory || crops.find(c => c.id === layoutCrops[0])?.crop_category || 'Mixed';
+
+        const existingGroup = sopGroups.find(g => 
+          g.crop_ids?.length === layoutCrops.length && 
+          g.crop_ids?.every((id: string) => layoutCrops.includes(id))
+        );
+
+        if (!existingGroup) {
+          const cropNames = layoutCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
+          const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
+          const groupName = `${derivedCategory}: ${namePreview}`;
+
+          const { data: newGroup, error: grpErr } = await db.from('sop_groups').insert([{
+            group_name: groupName,
+            category: derivedCategory,
+            crop_ids: layoutCrops
+          }]).select().single();
+          
+          if (grpErr) {
+            toast({ title: "Group Creation Blocked", description: grpErr.message, variant: "destructive" });
+          } else if (newGroup) {
+            setSopGroups(prev => [newGroup, ...prev]);
+            toast({ title: "Auto-Group Created", description: `Group "${groupName}" created successfully.` });
+          }
+        }
+      }
+
       toast({ title: "Order Saved", description: "Global stage sequence locked in." });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
@@ -212,6 +402,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     setLoading(false);
   };
 
+  // Masters Handlers
   const handleAddCrop = async () => {
     if (!newCrop.name.trim() || !newCrop.category.trim()) return toast({ title: "Error", description: "Required", variant: "destructive" });
     await db.from('master_crops').insert([{ crop_name: newCrop.name.trim(), crop_category: newCrop.category.trim(), status: 'Active' }]);
@@ -227,21 +418,82 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     await db.from('master_uom').insert([{ uom_name: newUom.name.trim(), uom_symbol: newUom.symbol.trim() }]);
     setIsUomOpen(false); setNewUom({ name: '', symbol: '' }); fetchMasters();
   };
+  // 1. Updated Parameter Logic (Handles Inline UOM Mapping)
   const handleAddParameter = async () => {
-    if (!newParam.label.trim()) return toast({ title: "Error", description: "Required", variant: "destructive" });
+    if (!newParam.label.trim()) return toast({ title: "Error", description: "Label required", variant: "destructive" });
+    if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && !newParam.defaultUom) {
+      return toast({ title: "Error", description: "Please select a default UOM", variant: "destructive" });
+    }
+
     let options = newParam.type === 'Dropdown Choice' ? newParam.options.split(',').map(s=>s.trim()).filter(Boolean) : [];
-    await db.from('master_parameters').insert([{ parameter_label: newParam.label.trim(), ui_input_type: newParam.type, options_data: options }]);
-    setIsParamOpen(false); setNewParam({ label: '', type: 'Numeric', options: '' }); fetchMasters();
+    
+    const { data: paramData, error } = await db.from('master_parameters').insert([{ 
+      parameter_label: newParam.label.trim(), 
+      ui_input_type: newParam.type, 
+      options_data: options 
+    }]).select('id').single();
+
+    if (error) return toast({ title: "Error", description: error.message, variant: "destructive" });
+
+    if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && paramData) {
+      const inserts = newParam.uoms.map((uomId: string) => ({
+        parameter_id: paramData.id,
+        uom_id: uomId,
+        is_default_uom: uomId === newParam.defaultUom
+      }));
+      await db.from('parameter_uom_mapping').insert(inserts);
+    }
+
+    setIsParamOpen(false); 
+    setNewParam({ label: '', type: 'Numeric', options: '', uoms: [], defaultUom: '' }); 
+    fetchMasters();
+    toast({ title: "Success", description: "Parameter mapped and saved!" });
   };
   
+  // 2. New Cloudinary Upload Handler
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      setUploadingImage(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET); 
+
+      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+      const response = await fetch(endpoint, { method: 'POST', body: formData });
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
+      
+      setNewGls(prev => ({ ...prev, image_url: data.secure_url }));
+      toast({ title: "Upload Success", description: "Image attached." });
+    } catch (err: any) {
+      toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // 3. Updated Product Logic (Includes Image URL)
   const handleAddGls = async () => {
-    if (!newGls.name.trim()) return toast({ title: "Error", description: "Product Name is required", variant: "destructive" });
-    setLoading(true);
-    const { error } = await db.from('master_gls_products').insert([{ product_name: newGls.name.trim(), active_ingredients: newGls.ingredients.trim() }]);
-    setLoading(false);
-    if (error) return toast({ title: "Save Failed", description: error.message, variant: "destructive" });
-    toast({ title: "Success", description: "GLS Product added!" });
-    setIsGlsOpen(false); setNewGls({ name: '', ingredients: '' }); fetchMasters();
+    if (!newGls.name.trim()) return toast({ title: "Validation Error", description: "Product name is required.", variant: "destructive" });
+    const { error } = await supabase.from('master_gls_products').insert([{
+        product_name: newGls.name, 
+        active_ingredients: newGls.ingredients, 
+        description: newGls.description, 
+        benefits: newGls.benefits, 
+        impact: newGls.impact,
+        image_url: newGls.image_url // Includes uploaded image
+      }]);
+    if (error) toast({ title: "Error saving product", description: error.message, variant: "destructive" });
+    else { 
+      toast({ title: "Success", description: "Product configuration added cleanly." }); 
+      setIsGlsOpen(false); 
+      setNewGls({ name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
+      fetchMasters(); 
+    }
   };
 
   const openUomMapping = async (param: any) => {
@@ -351,6 +603,35 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
         }
       }
 
+      // 🚀 BULLETPROOF AUTO-GROUPING (Failsafe in case they skipped the Lock Order button)
+      if (layoutCrops.length > 0) {
+        const derivedCategory = layoutCategory || crops.find(c => c.id === layoutCrops[0])?.crop_category || 'Mixed';
+
+        const existingGroup = sopGroups.find(g => 
+          g.crop_ids?.length === layoutCrops.length && 
+          g.crop_ids?.every((id: string) => layoutCrops.includes(id))
+        );
+
+        if (!existingGroup) {
+          const cropNames = layoutCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
+          const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
+          const groupName = `${derivedCategory}: ${namePreview}`;
+
+          const { data: newGroup, error: grpErr } = await db.from('sop_groups').insert([{
+            group_name: groupName,
+            category: derivedCategory,
+            crop_ids: layoutCrops
+          }]).select().single();
+          
+          if (grpErr) {
+            toast({ title: "Group Creation Blocked", description: grpErr.message, variant: "destructive" });
+          } else if (newGroup) {
+            setSopGroups(prev => [newGroup, ...prev]);
+            toast({ title: "Auto-Group Created", description: `Group "${groupName}" created successfully.` });
+          }
+        }
+      }
+
       toast({ title: "Success!", description: `Stage SOP saved for ${layoutCrops.length} crop(s).` });
       if (layoutCrops.length === 1) loadExistingSOP(layoutCrops[0], activeSopStage);
       
@@ -369,17 +650,121 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          {/* 🚀 FIXED: Reordered Tabs, Builder is now LAST */}
-          <TabsList className="grid grid-cols-6 mb-4 h-12">
+          <TabsList className="grid grid-cols-7 mb-4 h-12">
             <TabsTrigger value="crops" className="gap-2"><Leaf className="h-4 w-4"/> Crops</TabsTrigger>
             <TabsTrigger value="stages" className="gap-2"><ListTree className="h-4 w-4"/> Stages</TabsTrigger>
-            <TabsTrigger value="gls" className="gap-2"><FlaskConical className="h-4 w-4"/> GLS</TabsTrigger>
-            <TabsTrigger value="parameters" className="gap-2"><Settings className="h-4 w-4"/> Params</TabsTrigger>
+            <TabsTrigger value="gls" className="gap-2"><FlaskConical className="h-4 w-4"/> Products</TabsTrigger>
+            
             <TabsTrigger value="uom" className="gap-2"><Ruler className="h-4 w-4"/> UOMs</TabsTrigger>
-            <TabsTrigger value="layout" className="gap-2"><Map className="h-4 w-4"/> SOP Builder</TabsTrigger>
+            <TabsTrigger value="parameters" className="gap-2"><Settings className="h-4 w-4"/> Parameters</TabsTrigger>
+            
+            <TabsTrigger value="layout" className="gap-2 bg-primary/5 data-[state=active]:bg-primary/10"><Map className="h-4 w-4"/> SOP Builder</TabsTrigger>
+            <TabsTrigger value="groups" className="gap-2"><Layers className="h-4 w-4"/> SOP Groups</TabsTrigger>
           </TabsList>
 
-          {/* ==================== 🚀 CROPS TAB (NOW FIRST) ==================== */}
+          {/* ==================== 🚀 SOP GROUPS TAB ==================== */}
+          <TabsContent value="groups">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
+                <div>
+                  <CardTitle>SOP Crop Groups</CardTitle>
+                  <CardDescription>Auto-generated bundles of crops sharing the same SOP layout.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {sopGroups.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+                    <Layers className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                    <p>No SOP Groups created yet.</p>
+                    <p className="text-sm mt-1">Use the <b>SOP Builder</b> to map a schedule to multiple crops to auto-generate a group.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {sopGroups.map(group => (
+                      <Card key={group.id} className="flex flex-col shadow-sm hover:shadow-md transition-shadow border-primary/20">
+                        <CardHeader className="pb-3 border-b bg-slate-50/50">
+                          <div className="flex justify-between items-start">
+                            <CardTitle className="text-lg line-clamp-2" title={group.group_name}>{group.group_name}</CardTitle>
+                            <Badge variant="outline" className="bg-white shrink-0 ml-2">{group.category}</Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="py-4 flex-1">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Included Crops ({group.crop_ids?.length || 0})</p>
+                          <div className="flex flex-wrap gap-2">
+                            {group.crop_ids?.map((id: string) => {
+                              const crop = crops.find(c => c.id === id);
+                              return crop ? <Badge key={id} variant="secondary" className="font-normal">{crop.crop_name}</Badge> : null;
+                            })}
+                          </div>
+                        </CardContent>
+                        <CardFooter className="pt-3 pb-3 border-t bg-slate-50 flex justify-between gap-2 flex-wrap">
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="h-8 text-xs bg-white" onClick={() => handleViewGroupSop(group)}>
+                              <Eye className="h-3 w-3 mr-1.5" /> View SOP
+                            </Button>
+                            <Button variant="default" size="sm" className="h-8 text-xs shadow-sm" onClick={() => handleEditGroupSop(group)}>
+                              <Map className="h-3 w-3 mr-1.5" /> Edit SOP
+                            </Button>
+                          </div>
+                          <div className="flex gap-2">
+                            {/* 🚀 ONLY EDIT/DELETE EXITS HERE */}
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => openEditGroup(group)}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => deleteGroup(group.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            
+            {/* 🚀 SIMPLIFIED GROUP MANAGEMENT DIALOG */}
+            <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Manage Group Crops</DialogTitle>
+                  <DialogDescription>Add new crops to this group. They will automatically inherit the group's SOP layout.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="bg-muted/20 p-3 rounded-md border">
+                    <p className="text-sm font-semibold">{editingGroup?.group_name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Category: <Badge variant="secondary" className="font-normal">{editingGroup?.category}</Badge></p>
+                  </div>
+                  
+                  {editingGroup?.category && (
+                    <div className="space-y-2 animate-in fade-in pt-2">
+                      <Label className="flex justify-between items-center">
+                        Select Crops to Include
+                        <span className="text-xs text-muted-foreground font-normal">{groupForm.crops.length} selected</span>
+                      </Label>
+                      <div className="bg-slate-50 border rounded-md p-3 max-h-[250px] overflow-y-auto grid grid-cols-2 gap-2 shadow-inner">
+    {crops
+      // 🚀 FIXED: Only show crops that are unassigned OR already belong to THIS group
+      .filter(c => c.crop_category === editingGroup?.category && (!allAssignedCropIds.includes(c.id) || groupForm.crops.includes(c.id)))
+      .map(c => (
+      <div key={c.id} className="flex items-center space-x-2 bg-white p-1.5 border rounded-sm">
+        <Checkbox id={`g-crop-${c.id}`} checked={groupForm.crops.includes(c.id)} onCheckedChange={() => toggleGroupCrop(c.id)} />
+        <Label htmlFor={`g-crop-${c.id}`} className="text-xs font-medium cursor-pointer truncate flex-1">{c.crop_name}</Label>
+      </div>
+    ))}
+  </div>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsGroupModalOpen(false)}>Cancel</Button>
+                  <Button onClick={saveGroup}>Save Changes</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          {/* ==================== CROPS TAB ==================== */}
           <TabsContent value="crops">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
@@ -438,7 +823,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
             </Card>
           </TabsContent>
 
-          {/* ... OTHER MASTER TABS (UNCHANGED) ... */}
+          {/* ==================== STAGES TAB ==================== */}
           <TabsContent value="stages">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
@@ -466,65 +851,204 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
             </Card>
           </TabsContent>
 
+          {/* ==================== GLS PRODUCTS TAB ==================== */}
           <TabsContent value="gls">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
-                <div><CardTitle>Master of Products</CardTitle><CardDescription>Registry of products used in applications.</CardDescription></div>
-                <Dialog open={isGlsOpen} onOpenChange={setIsGlsOpen}>
-                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Product</Button></DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader><DialogTitle>Add New Product</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2"><Label>Product Name *</Label><Input value={newGls.name} onChange={e => setNewGls({...newGls, name: e.target.value})} /></div>
-                      <div className="space-y-2"><Label>Active Ingredients</Label><Input placeholder="e.g., Nitrogen 20%" value={newGls.ingredients} onChange={e => setNewGls({...newGls, ingredients: e.target.value})} /></div>
+            <Card className="border-border shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between bg-muted/30 border-b pb-4 pt-5 px-6">
+                <div className="space-y-1">
+                  <CardTitle className="text-lg flex items-center gap-2">Master of Products</CardTitle>
+                  <CardDescription>Registry of products used in applications with rich descriptive parameters.</CardDescription>
+                </div>
+                <Dialog open={isGlsOpen} onOpenChange={(open) => {
+                  if (!open) setNewGls({ name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
+                  setIsGlsOpen(open);
+                }}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="gap-1.5 shadow-sm"><Plus className="h-4 w-4" /> Add Product</Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
+                    <DialogHeader className="px-6 py-4 border-b bg-muted/30"><DialogTitle>Add New Product Profile</DialogTitle></DialogHeader>
+                    <div className="px-6 py-4 max-h-[65vh] overflow-y-auto space-y-5 custom-scrollbar">
+                      
+                      {/* NEW: CLOUDINARY IMAGE UPLOAD */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-foreground">Product Image</Label>
+                        <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border border-dashed">
+                          {newGls.image_url ? (
+                            <img src={newGls.image_url} alt="Preview" className="h-16 w-16 object-cover rounded-md border shadow-sm shrink-0" />
+                          ) : (
+                            <div className="h-16 w-16 bg-slate-200 rounded-md flex items-center justify-center border text-slate-400 shrink-0">
+                              <ImageIcon className="h-6 w-6" />
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <Input type="file" accept="image/*" onChange={handleProductImageUpload} disabled={uploadingImage} className="bg-white" />
+                            {uploadingImage && <p className="text-xs text-indigo-600 mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading to Cloudinary...</p>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-foreground">Product Name *</Label>
+                          <Input value={newGls.name} onChange={e => setNewGls({...newGls, name: e.target.value})} placeholder="e.g., Earthflow Bio-Boost" className="bg-white" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-foreground">Active Ingredients</Label>
+                          <Input placeholder="e.g., Azotobacter 20%" value={newGls.ingredients} onChange={e => setNewGls({...newGls, ingredients: e.target.value})} className="bg-white" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-foreground">Product Description</Label>
+                        <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 custom-scrollbar"
+                          placeholder="Provide a comprehensive summary of the product composition and intended usage..."
+                          value={newGls.description} onChange={e => setNewGls({...newGls, description: e.target.value})} />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-foreground">Benefits & Advantages</Label>
+                          <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 custom-scrollbar"
+                            placeholder="e.g., Increases crop yield by 15%..." value={newGls.benefits} onChange={e => setNewGls({...newGls, benefits: e.target.value})} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-foreground">Impact on Soil/Crop</Label>
+                          <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 custom-scrollbar"
+                            placeholder="e.g., Restores microbiome balance..." value={newGls.impact} onChange={e => setNewGls({...newGls, impact: e.target.value})} />
+                        </div>
+                      </div>
                     </div>
-                    <DialogFooter><Button onClick={handleAddGls}>Save Product</Button></DialogFooter>
+                    <DialogFooter className="px-6 py-4 border-t bg-muted/20">
+                      <Button variant="outline" onClick={() => setIsGlsOpen(false)}>Cancel</Button>
+                      <Button onClick={handleAddGls} disabled={uploadingImage}>Save Product Profile</Button>
+                    </DialogFooter>
                   </DialogContent>
                 </Dialog>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader><TableRow><TableHead className="pl-6">Product Name</TableHead><TableHead>Active Ingredients</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {glsProducts.length === 0 && <TableRow><TableCell colSpan={2} className="text-center py-8">No products yet.</TableCell></TableRow>}
-                    {glsProducts.map(g => (<TableRow key={g.id}><TableCell className="font-medium pl-6">{g.product_name}</TableCell><TableCell className="text-muted-foreground">{g.active_ingredients || '--'}</TableCell></TableRow>))}
-                  </TableBody>
-                </Table>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead className="pl-6 font-semibold w-[25%]">Product</TableHead>
+                        <TableHead className="font-semibold w-[15%]">Active Ingredients</TableHead>
+                        <TableHead className="font-semibold w-[20%]">Description</TableHead>
+                        <TableHead className="font-semibold w-[20%]">Benefits</TableHead>
+                        <TableHead className="font-semibold w-[20%]">Impact</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {glsProducts.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                            <div className="flex flex-col items-center justify-center gap-1">
+                              <span className="font-medium text-slate-500">No products cataloged yet.</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {glsProducts.map(g => (
+                        <TableRow key={g.id} className="hover:bg-muted/30 transition-colors">
+                          <TableCell className="pl-6 align-top pt-4">
+                            <div className="flex items-center gap-3">
+                              {g.image_url ? (
+                                <img src={g.image_url} alt="Product" className="h-10 w-10 object-cover rounded-md border shadow-sm shrink-0" />
+                              ) : (
+                                <div className="h-10 w-10 bg-slate-100 rounded-md border flex items-center justify-center shrink-0">
+                                  <ImageIcon className="h-4 w-4 text-slate-300" />
+                                </div>
+                              )}
+                              <span className="font-semibold text-foreground">{g.product_name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top pt-4"><Badge variant="secondary" className="font-normal bg-slate-100 text-slate-700 border-slate-200">{g.active_ingredients || 'N/A'}</Badge></TableCell>
+                          <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-muted-foreground" title={g.description || ''}>{g.description || '—'}</div></TableCell>
+                          <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-slate-600" title={g.benefits || ''}>{g.benefits || '—'}</div></TableCell>
+                          <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-slate-600" title={g.impact || ''}>{g.impact || '—'}</div></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
-
+          
+          {/* ==================== PARAMETERS TAB ==================== */}
           <TabsContent value="parameters">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
-                <div>
-                  <CardTitle>Master Parameter Registry</CardTitle>
-                  <CardDescription>Central pool of parameters mapped to multiple UOMs.</CardDescription>
-                </div>
-                <Dialog open={isParamOpen} onOpenChange={setIsParamOpen}>
+                <div><CardTitle>Master Parameter Registry</CardTitle><CardDescription>Central pool of parameters mapped to multiple UOMs.</CardDescription></div>
+                <Dialog open={isParamOpen} onOpenChange={(open) => {
+                  if(!open) setNewParam({ label: '', type: 'Numeric', options: '', uoms: [], defaultUom: '' });
+                  setIsParamOpen(open);
+                }}>
                   <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Parameter</Button></DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="sm:max-w-[450px]">
                     <DialogHeader><DialogTitle>Add New Parameter</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
                       <div className="space-y-2"><Label>Parameter Label *</Label><Input placeholder="e.g. Plant Height" value={newParam.label} onChange={e => setNewParam({...newParam, label: e.target.value})} /></div>
                       <div className="space-y-2">
                         <Label>Input Type *</Label>
-                        <Select value={newParam.type} onValueChange={v => setNewParam({...newParam, type: v})}>
+                        <Select value={newParam.type} onValueChange={v => setNewParam({...newParam, type: v, uoms: [], defaultUom: ''})}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Numeric">Numeric (Numbers only)</SelectItem>
                             <SelectItem value="Dropdown Choice">Dropdown Choice</SelectItem>
                             <SelectItem value="Boolean">Boolean (Yes/No)</SelectItem>
                             <SelectItem value="Textarea">Textarea (Long text)</SelectItem>
+                            <SelectItem value="Upload Image">Upload Image</SelectItem> {/* 🚀 NEW TYPE */}
                           </SelectContent>
                         </Select>
                       </div>
+
                       {newParam.type === 'Dropdown Choice' && (
-                        <div className="space-y-2">
+                        <div className="space-y-2 animate-in fade-in">
                           <Label>Dropdown Options *</Label>
                           <Input placeholder="e.g. Dark Green, Light Green, Yellow" value={newParam.options} onChange={e => setNewParam({...newParam, options: e.target.value})} />
                         </div>
                       )}
+
+                      {/* 🚀 INLINE UOM SELECTION FOR NUMERIC TYPES */}
+                      {newParam.type === 'Numeric' && (
+                        <div className="space-y-4 bg-slate-50 p-4 border rounded-xl animate-in fade-in">
+                          <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase text-slate-500">1. Allowed UOMs</Label>
+                            <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto">
+                              {uoms.map(u => (
+                                <div key={u.id} className="flex items-center space-x-2 bg-white p-2 border rounded-md">
+                                  <Checkbox 
+                                    id={`p-uom-${u.id}`}
+                                    checked={newParam.uoms.includes(u.id)} 
+                                    onCheckedChange={(c) => {
+                                      setNewParam(p => {
+                                        const newUoms = c ? [...p.uoms, u.id] : p.uoms.filter(id => id !== u.id);
+                                        const newDef = (c && p.defaultUom === '') ? u.id : (!newUoms.includes(p.defaultUom) ? '' : p.defaultUom);
+                                        return { ...p, uoms: newUoms, defaultUom: newDef };
+                                      });
+                                    }} 
+                                  />
+                                  <Label htmlFor={`p-uom-${u.id}`} className="text-sm font-medium leading-none cursor-pointer truncate">{u.uom_name} ({u.uom_symbol})</Label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {newParam.uoms.length > 0 && (
+                            <div className="space-y-2 animate-in fade-in">
+                              <Label className="text-xs font-bold uppercase text-slate-500">2. Default UOM Selection</Label>
+                              <Select value={newParam.defaultUom} onValueChange={v => setNewParam({...newParam, defaultUom: v})}>
+                                <SelectTrigger className="bg-white"><SelectValue placeholder="Select default UOM..." /></SelectTrigger>
+                                <SelectContent>
+                                  {uoms.filter(u => newParam.uoms.includes(u.id)).map(u => (
+                                    <SelectItem key={u.id} value={u.id}>{u.uom_name} ({u.uom_symbol})</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                     </div>
                     <DialogFooter><Button onClick={handleAddParameter}>Save Parameter</Button></DialogFooter>
                   </DialogContent>
@@ -538,7 +1062,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                     {parameters.map(p => (
                       <TableRow key={p.id}>
                         <TableCell className="font-medium pl-6">{p.parameter_label}</TableCell>
-                        <TableCell><Badge variant="secondary">{p.ui_input_type}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary" className={p.ui_input_type === 'Upload Image' ? 'bg-indigo-50 text-indigo-700' : ''}>{p.ui_input_type}</Badge></TableCell>
                         <TableCell className="text-muted-foreground text-xs">{p.ui_input_type === 'Dropdown Choice' ? JSON.stringify(p.options_data) : '—'}</TableCell>
                         <TableCell className="text-right pr-6">
                           {p.ui_input_type === 'Numeric' && (
@@ -552,7 +1076,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               </CardContent>
             </Card>
           </TabsContent>
-
+          {/* ==================== UOM TAB ==================== */}
           <TabsContent value="uom">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
@@ -581,16 +1105,19 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
             </Card>
           </TabsContent>
 
-          {/* ==================== 🚀 SPREADSHEET SOP BUILDER (NOW LAST) ==================== */}
+          {/* ==================== SPREADSHEET SOP BUILDER TAB ==================== */}
           <TabsContent value="layout">
             <div className="grid grid-cols-1 gap-6">
-              
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-4">
-                <div className="bg-muted/20 p-5 rounded-xl border border-border/50">
-                  <h3 className="font-bold text-sm text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <span className="bg-primary text-white h-5 w-5 rounded-full flex items-center justify-center text-[10px]">1</span> Target Crops
-                  </h3>
-                  <div className="space-y-4">
+                
+                {/* 1. Target Crops */}
+                <div className="bg-muted/20 p-5 rounded-xl border border-border/50 flex flex-col">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-sm text-foreground uppercase tracking-wider flex items-center gap-2">
+                      <span className="bg-primary text-white h-5 w-5 rounded-full flex items-center justify-center text-[10px]">1</span> Target Crops
+                    </h3>
+                  </div>
+                  <div className="space-y-4 flex-1">
                     <Select value={layoutCategory} onValueChange={(v) => { setLayoutCategory(v === 'ALL' ? '' : v); setLayoutCrops([]); }}>
                       <SelectTrigger className="bg-white"><SelectValue placeholder="Filter by Category..." /></SelectTrigger>
                       <SelectContent>
@@ -613,6 +1140,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                   </div>
                 </div>
 
+                {/* 2. Crop Journey */}
                 <div className="bg-muted/20 p-5 rounded-xl border border-border/50 flex flex-col h-full">
                   <h3 className="font-bold text-sm text-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
                     <span className="bg-primary text-white h-5 w-5 rounded-full flex items-center justify-center text-[10px]">2</span> Crop Journey (Execution Order)
@@ -649,6 +1177,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                 </div>
               </div>
 
+              {/* 3. SOP Spreadsheet Editor */}
               {layoutCrops.length > 0 && layoutStages.length > 0 && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 border-t pt-6">
                   <h3 className="font-bold text-lg text-foreground mb-4 flex items-center gap-2">
@@ -887,12 +1416,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
         </DialogContent>
       </Dialog>
       
-      {/* 🚀 NEW: FULL EXCEL-STYLE CROP SOP VIEWER DIALOG */}
+      {/* FULL EXCEL-STYLE CROP SOP VIEWER DIALOG */}
       <Dialog open={isSopViewOpen} onOpenChange={setIsSopViewOpen}>
         <DialogContent className="max-w-[95vw] w-full max-h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b bg-muted/10 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
-              <Table2 className="h-5 w-5 text-primary" /> SOP Format View: <span className="text-primary font-bold">{viewCrop?.crop_name}</span>
+              <CheckSquare className="h-5 w-5 text-primary" /> SOP Format View: <span className="text-primary font-bold">{viewCrop?.crop_name}</span>
             </DialogTitle>
             <DialogDescription>Read-only view of the chronologically mapped stages, applications, and parameters.</DialogDescription>
           </DialogHeader>
@@ -923,7 +1452,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                   </TableHeader>
                   <TableBody>
                     {viewSopData.map((stage) => {
-                      // 🚀 MAGIC: If there are no applications, we render a dummy row so the stage and parameters still show!
                       const apps = stage.sop_applications.length > 0 ? stage.sop_applications : [{}]; 
                       const rowSpan = apps.length;
                       const paramText = stage.sop_parameters.length > 0 
@@ -932,10 +1460,8 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
 
                       return apps.map((app: any, idx: number) => (
                         <TableRow key={`${stage.id}-${idx}`} className="hover:bg-transparent">
-                          {/* STAGE SPANS ALL ROWS */}
                           {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-slate-50 font-bold align-top whitespace-pre-wrap">{stage.master_crop_stages?.stage_name}</TableCell>}
                           
-                          {/* APP SPECIFIC COLUMNS */}
                           <TableCell className="border border-slate-200 align-top">{app.application_type || '--'}</TableCell>
                           <TableCell className="border border-slate-200 align-top">{app.das ?? '--'}</TableCell>
                           <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.application_method || '--'}</TableCell>
@@ -944,14 +1470,11 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                           <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.benefit || '--'}</TableCell>
                           <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.impact || '--'}</TableCell>
                           
-                          {/* RECOMMENDATION SPANS ALL ROWS */}
                           {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-slate-50 align-top whitespace-pre-wrap">{stage.chemical_recommendation_and_dosage || '--'}</TableCell>}
                           
-                          {/* CHEMICALS */}
                           <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.chemical_name || '--'}</TableCell>
                           <TableCell className="border border-slate-200 align-top">{app.chemical_dosage || '--'}</TableCell>
                           
-                          {/* PARAMS SPAN ALL ROWS */}
                           {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-red-50/30 align-top font-medium whitespace-pre-wrap leading-relaxed">{paramText}</TableCell>}
                         </TableRow>
                       ));

@@ -22,13 +22,22 @@ interface Props {
 type ViewLevel = 'routes' | 'villages' | 'farmers';
 
 
-export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number }[] }) => {
+
+
+export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number, externalFarmCardCount?: number }[] }) => {
   
-  const computeMetrics = (farmers: any[], villageCount: number) => {
+  const computeMetrics = (farmers: any[], villageCount: number, externalFarmCardCount?: number) => {
+    // 🚀 STEP 1: Calculate the inline array fallback count if external query data is missing
+    const inlineFarmCardCount = farmers.filter(f => f.has_farm_card === true).length;
+    
+    // If externalFarmCardCount is passed as a valid number, use it. Otherwise, fall back to the inline count.
+    const resolvedFarmCardCount = typeof externalFarmCardCount === 'number' ? externalFarmCardCount : inlineFarmCardCount;
+
     if (!farmers || farmers.length === 0) {
       return {
         villageCount, totalFarmers: 0, completed: 0, drafts: 0, 
         fsppCount: '0',
+        farmCardCount: resolvedFarmCardCount, // 🚀 Failsafe fallback injected cleanly on empty slots
         avgScore: 0, totalLand: '0', committedLand: '0', avgLand: '0', 
         topCrops: '—', topSoils: '—', primaryStage: '—', lastVisited: '—'
       };
@@ -40,6 +49,9 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     
     const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
     
+    // 🚀 STEP 2: Use the safely resolved metric value here
+    const farmCardCount = resolvedFarmCardCount; 
+
     const counts: Record<string, number> = {
       'Category A': 0, 'Category B': 0, 'Category C': 0, 'Category D': 0
     };
@@ -83,12 +95,32 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
       });
     });
     
-    const topCrops = cropTotal > 0
-      ? Array.from(cropMap.entries())
-          .sort((a, b) => b[1] - a[1])
-          .map(e => `${e[0]} (${Math.round((e[1]/cropTotal)*100)}%)`)
-          .join(', ')
-      : '—';
+    let topCrops = '—';
+    if (cropTotal > 0) {
+      let otherTotalCount = 0;
+      const mainCropsList: string[] = [];
+
+      const sortedCrops = Array.from(cropMap.entries()).sort((a, b) => b[1] - a[1]);
+
+      sortedCrops.forEach(([cropName, count]) => {
+        const percentage = Math.round((count / cropTotal) * 100);
+        
+        if (percentage <= 5) {
+          otherTotalCount += count;
+        } else {
+          mainCropsList.push(`${cropName} (${percentage}%)`);
+        }
+      });
+
+      if (otherTotalCount > 0) {
+        const otherPercentage = Math.round((otherTotalCount / cropTotal) * 100);
+        if (otherPercentage > 0) {
+          mainCropsList.push(`Other (${otherPercentage}%)`);
+        }
+      }
+
+      topCrops = mainCropsList.length > 0 ? mainCropsList.join(', ') : '—';
+    }
 
     const topSoils = soilTotal > 0 
       ? Array.from(soilMap.entries())
@@ -120,6 +152,7 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     return {
       villageCount, totalFarmers, completed, drafts, 
       fsppCount: fsppCountDisplay,
+      farmCardCount, 
       avgScore, totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
       topCrops, topSoils, primaryStage, lastVisited
     };
@@ -128,13 +161,25 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
   const allFarmers = entities.flatMap(e => e.farmers || []);
   const totalVillageCount = entities.reduce((sum, e) => sum + (e.villageCount || 0), 0);
   
-  // 🚀 FIXED: The TOTAL entity is now placed at the very beginning of the array!
+  // 🚀 STEP 3: Fallback handling for the global total accumulator
+  const containsExternalCards = entities.some(e => typeof e.externalFarmCardCount === 'number');
+  const totalFarmCardsCount = containsExternalCards
+    ? entities.reduce((sum, e) => sum + (e.externalFarmCardCount || 0), 0)
+    : allFarmers.filter(f => f.has_farm_card === true).length;
+
   const renderEntities = [
-    { name: "TOTAL (ALL)", farmers: allFarmers, villageCount: totalVillageCount },
+    { 
+      name: "TOTAL (ALL)", 
+      farmers: allFarmers, 
+      villageCount: totalVillageCount, 
+      externalFarmCardCount: totalFarmCardsCount 
+    },
     ...entities
   ];
 
-  const columnData = renderEntities.map(e => computeMetrics(e.farmers, e.villageCount));
+  const columnData = renderEntities.map(e => computeMetrics(e.farmers, e.villageCount, e.externalFarmCardCount));
+
+  // ... rest of your rows array, exportToPDF, and table layout JSX remnants stay exactly as they are!
 
   const rows = [
     { label: "Number of Villages", key: "villageCount" },
@@ -142,6 +187,7 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     { label: "Completed Profile Farmer", key: "completed" },
     { label: "Draft Farmer", key: "drafts" },
     { label: "FSPP Enrolled Farmer", key: "fsppCount" },
+    { label: "Farm Card Built", key: "farmCardCount" }, // 🚀 Inject row configuration directly below fsppCount
     { label: "Average Score", key: "avgScore" },
     { label: "Total Land (Acres)", key: "totalLand" },
     { label: "Committed Land for Bio", key: "committedLand" },
@@ -160,7 +206,6 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
 
     const rowsHtml = rows.map((row) => {
       const rowDataHtml = columnData.map((data, idx) => {
-        // 🚀 FIXED: Target index 0 for the Total styling in PDF
         const isTotalCol = idx === 0;
         return `<td style="${isTotalCol ? 'background-color: #f0fdf4; font-weight: bold;' : ''}">${data[row.key as keyof typeof data]}</td>`;
       }).join('');
@@ -199,7 +244,7 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
           </table>
           <script>
             setTimeout(() => { window.print(); window.close(); }, 500);
-          </script>
+          </style>
         </body>
       </html>
     `);
@@ -232,7 +277,6 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
                   Metrics
                 </th>
                 {renderEntities.map((e, i) => {
-                  // 🚀 FIXED: Target index 0 for the Total styling in the table header
                   const isTotalCol = i === 0;
                   return (
                     <th key={i} className={`px-4 py-3 font-bold whitespace-nowrap min-w-[180px] text-center border-r border-b last:border-r-0 sticky top-0 z-20 outline outline-1 outline-border
@@ -250,7 +294,6 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
                     {row.label}
                   </td>
                   {columnData.map((data, colIdx) => {
-                    // 🚀 FIXED: Target index 0 for the Total styling in the table body cells
                     const isTotalCol = colIdx === 0;
                     return (
                       <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 

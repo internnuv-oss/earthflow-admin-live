@@ -289,7 +289,7 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
                           }
                           
                           // Prioritize Odo Distance, fallback to GPS total_distance
-                          const finalDistanceDisplay = odoDistance > 0 ? odoDistance : (shift.total_distance || 0);
+                          const finalDistanceDisplay = odoDistance > 0 ? odoDistance : Number(shift.total_distance || 0).toFixed(2);
 
                           return (
                             <div className="flex flex-col">

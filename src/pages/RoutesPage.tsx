@@ -201,8 +201,9 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     try {
       let fetchedFarmers: any[] = [];
       let fetchedDrafts: any[] = [];
+      let fetchedFarmCards: any[] = []; // 🚀 NEW: Array to hold all transactional farm cards
 
-      // 1. Fetch ALL Real Farmers (Submitted) in batches to bypass Supabase 1000 limit
+      // 1. Fetch ALL Real Farmers (Submitted) in batches
       let from = 0;
       const step = 1000;
       while (true) {
@@ -232,7 +233,21 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         from += step;
       }
 
-      // 3. Format Drafts exactly like the main list page maps them
+      // 🚀 3. NEW: Fetch ALL Farm Cards in batches to bypass the 1000 limit
+      from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('farm_cards')
+          .select('id, se_id')
+          .range(from, from + step - 1);
+          
+        if (error) throw error;
+        if (data && data.length > 0) fetchedFarmCards.push(...data);
+        if (!data || data.length < step) break;
+        from += step;
+      }
+
+      // 4. Format Drafts exactly like the main list page maps them
       const formattedDrafts = fetchedDrafts.map((draft: any) => {
         const d = draft.draft_data || {};
         return {
@@ -244,7 +259,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
           district: d.city || d.district || '—', 
           taluka: d.taluka || '—',
           status: 'DRAFT',
-          is_draft: true, // Used by analytics row filter logic
+          is_draft: true,
           created_at: draft.updated_at,
           personal_details: { fatherName: d.fatherName, alternateMobile: d.alternateMobile, state: d.state, city: d.city, taluka: d.taluka, pincode: d.pincode },
           farm_details: {
@@ -259,26 +274,28 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         };
       });
 
-      // 4. Build the column data by anchoring directly to the SE profiles in your list
+      // 5. Build the column data by anchoring directly to the SE profiles in your list
       const seEntities = seList.map((se) => {
-        // 🚀 THE FIX: Filter farmers and drafts directly by the SE's unique profile ID!
         const seFarmers = fetchedFarmers.filter(f => f.se_id === se.id);
         const seDrafts = formattedDrafts.filter(d => d.se_id === se.id);
         
         const combinedFarmersForSE = [...seFarmers, ...seDrafts];
 
-        // Recalculate unique assigned village footprint for the metric table header
+        // 🚀 NEW: Count the absolute card records belonging to this executive directly from the farm_cards table
+        const actualFarmCardCount = fetchedFarmCards.filter(card => card.se_id === se.id).length;
+
         const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
         const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
 
         return {
           name: se.name || 'Unknown SE', 
           villageCount: uniqueSeVillages.length, 
-          farmers: combinedFarmersForSE
+          farmers: combinedFarmersForSE,
+          // 🚀 NEW PARAMETER PASSED DIRECTLY:
+          externalFarmCardCount: actualFarmCardCount 
         };
       });
 
-      // Show columns for all active SEs present in your list
       setAnalyticsData(seEntities);
     } catch (error: any) {
       toast({ title: 'Analytics Error', description: error.message, variant: 'destructive' });
