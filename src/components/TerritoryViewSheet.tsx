@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import FarmerDetailSheet from './FarmerDetailSheet';
 import { cn } from '@/lib/utils';
 import { StageProgressBar, getFarmerStage } from './FarmerTable';
+import { PolygonMap, MapPolygonFeature } from './PolygonMap';
 
 interface Props {
   se: any | null;
@@ -352,6 +353,8 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   const [tempDealers, setTempDealers] = useState<any[]>([]); // 🚀 NEW: Store temp dealers
   const [loading, setLoading] = useState(false);
   const [selectedFarmer, setSelectedFarmer] = useState<any | null>(null);
+  const [farmCards, setFarmCards] = useState<any[]>([]);
+  const [farmDiaries, setFarmDiaries] = useState<any[]>([]);
 
   useEffect(() => {
     if (open && se) {
@@ -397,14 +400,28 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
       }
     });
 
+    // 🚀 NEW: Fetch Farm Cards (with polygons) and Farm Diaries (with polygons)
     const [farmersRes, draftsRes, farmCardsRes, tempDealersRes] = await Promise.all([
       supabase.from('farmers').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('status', 'SUBMITTED'),
       supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer'),
-      (supabase as any).from('farm_cards').select('farmer_id').eq('se_id', se.id),
-      supabase.from('temp_dealers').select('*') // Fetch dealers to map into the routes
+      (supabase as any).from('farm_cards').select('id, farmer_id, boundary_polygon').eq('se_id', se.id), // 🚀 Added id & boundary_polygon
+      (supabase as any).from('temp_dealers').select('*') 
     ]);
 
     setTempDealers(tempDealersRes.data || []);
+    setFarmCards(farmCardsRes.data || []); // 🚀 Save farm cards to state for the map
+
+    // 🚀 NEW: Fetch Farm Diaries mapped to these farmers
+    const farmerIds = (farmersRes.data || []).map(f => f.id);
+    if (farmerIds.length > 0) {
+      const { data: diaryData } = await (supabase as any)
+        .from('farm_diary')
+        .select('id, farmer_id, farm_name, diary_polygon')
+        .in('farmer_id', farmerIds);
+      setFarmDiaries(diaryData || []);
+    } else {
+      setFarmDiaries([]);
+    }
 
     const farmersWithCards = new Set((farmCardsRes.data || []).map((fc: any) => fc.farmer_id));
 
@@ -478,6 +495,8 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
   };
 
   const getFarmersForRoute = (route: any) => {
+    if (!route) return []; // 🚀 FIX: Safety check to prevent null crashes
+    
     let routeFarmers: any[] = [];
     if (route.is_custom_others) {
         route.locations[0].villages.forEach((v: string) => { routeFarmers = [...routeFarmers, ...getFarmersForVillage(v)]; });
@@ -518,6 +537,36 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
 
   if (!se) return null;
 
+  // 🚀 NEW: Helper to aggregate polygons for a specific list of farmers
+  const getPolygonsForFarmers = (farmersList: any[]) => {
+    const ids = new Set(farmersList.map(f => f.id));
+    const polygons: MapPolygonFeature[] = [];
+
+    farmCards.forEach(fc => {
+      if (ids.has(fc.farmer_id) && Array.isArray(fc.boundary_polygon) && fc.boundary_polygon.length > 2) {
+        polygons.push({
+          id: `fc-${fc.id}`,
+          title: `Farm Card Plot`,
+          type: 'Farm Card',
+          coords: fc.boundary_polygon
+        });
+      }
+    });
+
+    farmDiaries.forEach(fd => {
+      if (ids.has(fd.farmer_id) && Array.isArray(fd.diary_polygon) && fd.diary_polygon.length > 2) {
+        polygons.push({
+          id: `fd-${fd.id}`,
+          title: fd.farm_name || 'Farm Diary Plot',
+          type: 'Farm Diary',
+          coords: fd.diary_polygon
+        });
+      }
+    });
+    
+    return polygons;
+  };
+
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -555,11 +604,12 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                 {/* ---------- ROUTE LEVEL ---------- */}
                 {level === 'routes' && (
                   <Tabs defaultValue="list" className="w-full">
-                    {/* 🚀 Changed to 3 columns to fit the Dealers tab */}
-                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-3">
+                    {/* 🚀 Changed to grid-cols-4 to fit the new Map tab */}
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-4">
                       <TabsTrigger value="list" className="gap-2"><MapIcon className="h-4 w-4" /> Routes</TabsTrigger>
                       <TabsTrigger value="dealers" className="gap-2"><Store className="h-4 w-4" /> Dealers</TabsTrigger>
                       <TabsTrigger value="analytics" className="gap-2"><TrendingUp className="h-4 w-4" /> Analytics</TabsTrigger>
+                      <TabsTrigger value="map" className="gap-2"><MapIcon className="h-4 w-4" /> Map</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="list" className="space-y-3 outline-none">
@@ -587,7 +637,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       })}
                     </TabsContent>
 
-                    {/* 🚀 NEW: Route-Level Dealers Tab */}
+                    {/* 🚀 Route-Level Dealers Tab */}
                     <TabsContent value="dealers" className="space-y-4 outline-none">
                       {displayRoutes.map((route: any) => {
                         const dealers = getDealersForRoute(route);
@@ -616,17 +666,24 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                         }))} 
                       />
                     </TabsContent>
+
+                    {/* 🚀 Route-Level Satellite Map Tab */}
+                    <TabsContent value="map" className="outline-none h-[65vh] w-full relative">
+                      {/* 🚀 FIX: Pass ALL farmers for this SE since no specific route is selected yet */}
+                      <PolygonMap polygons={getPolygonsForFarmers(farmers)} />
+                    </TabsContent>
                   </Tabs>
                 )}
 
                 {/* ---------- VILLAGES LEVEL ---------- */}
                 {level === 'villages' && activeRoute && (
                   <Tabs defaultValue="list" className="w-full">
-                    {/* 🚀 Changed to 3 columns to fit the Dealers tab */}
-                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-3">
+                    {/* 🚀 Changed to grid-cols-4 to fit the new Map tab */}
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-4">
                       <TabsTrigger value="list" className="gap-2"><MapPin className="h-4 w-4" /> Villages</TabsTrigger>
                       <TabsTrigger value="dealers" className="gap-2"><Store className="h-4 w-4" /> Dealers</TabsTrigger>
                       <TabsTrigger value="analytics" className="gap-2"><TrendingUp className="h-4 w-4" /> Analytics</TabsTrigger>
+                      <TabsTrigger value="map" className="gap-2"><MapIcon className="h-4 w-4" /> Map</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="list" className="space-y-3 outline-none">
@@ -646,7 +703,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       })}
                     </TabsContent>
 
-                    {/* 🚀 NEW: Village-Level Dealers Tab */}
+                    {/* 🚀 Village-Level Dealers Tab */}
                     <TabsContent value="dealers" className="space-y-4 outline-none">
                       {activeRoute.locations?.flatMap((loc: any) => loc.villages || []).map((v: string) => {
                         const dealers = getDealersForVillage(v);
@@ -675,17 +732,23 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                         }))} 
                       />
                     </TabsContent>
+
+                    {/* 🚀 Village-Level Satellite Map Tab */}
+                    <TabsContent value="map" className="outline-none h-[65vh] w-full relative">
+                      <PolygonMap polygons={getPolygonsForFarmers(activeRoute.locations?.flatMap((loc: any) => loc.villages || []).flatMap((v: string) => getFarmersForVillage(v)) || [])} />
+                    </TabsContent>
                   </Tabs>
                 )}
 
                 {/* ---------- FARMERS LEVEL (Specific Village Selected) ---------- */}
                 {level === 'farmers' && activeVillage && (
                   <Tabs defaultValue="list" className="w-full">
-                    {/* 🚀 Changed to 3 columns to fit the Dealers tab */}
-                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-3">
+                    {/* 🚀 Changed to grid-cols-4 to fit the new Map tab */}
+                    <TabsList className="w-full bg-muted/50 p-1 mb-4 grid grid-cols-4">
                       <TabsTrigger value="list" className="gap-2"><Users className="h-4 w-4" /> Farmers</TabsTrigger>
                       <TabsTrigger value="dealers" className="gap-2"><Store className="h-4 w-4" /> Dealers</TabsTrigger>
                       <TabsTrigger value="analytics" className="gap-2"><TrendingUp className="h-4 w-4" /> Analytics</TabsTrigger>
+                      <TabsTrigger value="map" className="gap-2"><MapIcon className="h-4 w-4" /> Map</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="analytics" className="outline-none">
@@ -698,7 +761,7 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       />
                     </TabsContent>
 
-                    {/* 🚀 NEW: Specific Village-Level Dealers Tab */}
+                    {/* 🚀 Specific Village-Level Dealers Tab */}
                     <TabsContent value="dealers" className="space-y-4 outline-none">
                       {(() => {
                         const dealers = getDealersForVillage(activeVillage);
@@ -753,6 +816,11 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                           </div>
                         </div>
                       ))}
+                    </TabsContent>
+
+                    {/* 🚀 Specific Mapped Farmer-Level Satellite Map Tab */}
+                    <TabsContent value="map" className="outline-none h-[65vh] w-full relative">
+                      <PolygonMap polygons={getPolygonsForFarmers(getFarmersForVillage(activeVillage))} />
                     </TabsContent>
                   </Tabs>
                 )}

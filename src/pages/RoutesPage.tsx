@@ -6,10 +6,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import AppLayout from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Loader2, Shield, Plus, User, ChevronLeft, ChevronRight, BarChart2 } from 'lucide-react';
+import { Loader2, Shield, Plus, User, ChevronLeft, ChevronRight, BarChart2, MapIcon } from 'lucide-react';
 import { RouteBuilderDialog } from '@/components/RouteBuilderDialog';
 import { SERoutesSheet } from '@/components/SERoutesSheet';
 import { TerritoryViewSheet, AnalyticsTable } from '@/components/TerritoryViewSheet';
+import { PolygonMap, MapPolygonFeature } from '@/components/PolygonMap';
 
 interface RoutesPageProps {
   onLogout: () => void;
@@ -71,6 +72,10 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
   const { session, loading: authLoading } = useAuth();
   const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id || '');
   const routesAccess = getModulePerm('routes');
+
+  const [isGlobalMapOpen, setIsGlobalMapOpen] = useState(false);
+  const [globalPolygons, setGlobalPolygons] = useState<MapPolygonFeature[]>([]);
+  const [globalMapLoading, setGlobalMapLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !permLoading && routesAccess.can_view) {
@@ -191,6 +196,47 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     }
     
     setLoading(false);
+  };
+
+  const handleOpenGlobalMap = async () => {
+    setIsGlobalMapOpen(true);
+    setGlobalMapLoading(true);
+
+    try {
+      const [fcRes, fdRes] = await Promise.all([
+        (supabase as any).from('farm_cards').select('id, boundary_polygon, farmers!inner(full_name)'),
+        (supabase as any).from('farm_diary').select('id, diary_polygon, farm_name, farmers!inner(full_name)')
+      ]);
+
+      const polys: MapPolygonFeature[] = [];
+      
+      (fcRes.data || []).forEach((fc: any) => {
+        if (Array.isArray(fc.boundary_polygon) && fc.boundary_polygon.length > 2) {
+          polys.push({
+            id: `fc-${fc.id}`,
+            title: `${fc.farmers?.full_name || 'Unknown'} - Farm Card`,
+            type: 'Farm Card',
+            coords: fc.boundary_polygon
+          });
+        }
+      });
+
+      (fdRes.data || []).forEach((fd: any) => {
+        if (Array.isArray(fd.diary_polygon) && fd.diary_polygon.length > 2) {
+          polys.push({
+            id: `fd-${fd.id}`,
+            title: `${fd.farmers?.full_name || 'Unknown'} - ${fd.farm_name || 'Diary'}`,
+            type: 'Farm Diary',
+            coords: fd.diary_polygon
+          });
+        }
+      });
+
+      setGlobalPolygons(polys);
+    } catch (error) {
+      console.error("Error fetching map polygons", error);
+    }
+    setGlobalMapLoading(false);
   };
   
 
@@ -352,6 +398,10 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         </div>
         
         <div className="flex items-center gap-3">
+          <Button onClick={handleOpenGlobalMap} variant="outline" className="gap-2 text-emerald-600 hover:text-emerald-700 border-emerald-200 bg-emerald-50/50">
+            <MapIcon className="h-4 w-4" /> View Global Map
+          </Button>
+
           <Button onClick={handleOpenGlobalAnalytics} variant="outline" className="gap-2 text-indigo-600 hover:text-indigo-700 border-indigo-200 bg-indigo-50/50">
             <BarChart2 className="h-4 w-4" /> View Overall Analytics
           </Button>
@@ -484,7 +534,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
       <TerritoryViewSheet se={selectedViewSE} open={!!selectedViewSE} onClose={() => setSelectedViewSE(null)} />
 
       <Dialog open={isAnalyticsOpen} onOpenChange={setIsAnalyticsOpen}>
-        <DialogContent className="max-w-[95vw] w-full max-h-[95vh] overflow-hidden flex flex-col p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-[95vw] w-full max-h-[95vh] overflow-hidden flex flex-col p-0">
           <DialogHeader className="px-6 py-4 border-b bg-muted/30 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <BarChart2 className="h-6 w-6 text-indigo-600" /> Overall Executive Performance
@@ -506,6 +556,28 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
               <AnalyticsTable entities={analyticsData} />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isGlobalMapOpen} onOpenChange={setIsGlobalMapOpen}>
+        {/* 🚀 FIX: Added aria-describedby={undefined} to silence the accessibility warning */}
+      <DialogContent aria-describedby={undefined} className="max-w-[95vw] w-full max-h-[95vh] h-[90vh] overflow-hidden flex flex-col p-0">
+           <DialogHeader className="px-6 py-4 border-b bg-muted/30 shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <MapIcon className="h-6 w-6 text-emerald-600" /> Global Territory Map
+              </DialogTitle>
+              <DialogDescription className="sr-only">Interactive map displaying global farm boundaries.</DialogDescription>
+           </DialogHeader>
+           <div className="flex-1 p-4 bg-slate-50 relative">
+             {globalMapLoading ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">Plotting global farm data...</p>
+                </div>
+             ) : (
+                <PolygonMap polygons={globalPolygons} />
+             )}
+           </div>
         </DialogContent>
       </Dialog>
     </AppLayout>
