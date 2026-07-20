@@ -77,7 +77,7 @@ const AppLayout = ({ children, onLogout }: AppLayoutProps) => {
         <header className="hidden md:flex flex-shrink-0 h-14 items-center justify-end border-b border-border bg-card/80 backdrop-blur-sm px-6">
           <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2 text-muted-foreground">
             <LogOut className="h-4 w-4" />
-            <span>Logout</span>
+            <span>Log Out</span>
           </Button>
         </header>
 

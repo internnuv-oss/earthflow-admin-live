@@ -183,7 +183,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   };
 // 🚀 NEW: Creates a flat list of ALL crops currently assigned to ANY group to prevent double-booking
 
-
   // Deep clone SOP from a source crop to multiple target crops
   const cloneSopToNewCrops = async (sourceCropId: string, targetCropIds: string[]) => {
     const { data: sourceStages } = await db.from('sop_crop_stages').select('*').eq('crop_id', sourceCropId);
