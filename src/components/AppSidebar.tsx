@@ -15,11 +15,8 @@ import {
   CalendarDays,
   Clock ,
   Receipt,
-<<<<<<< Updated upstream
-  ShieldCheck
-=======
+  ShieldCheck,
   Store
->>>>>>> Stashed changes
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
