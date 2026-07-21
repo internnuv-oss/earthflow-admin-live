@@ -18,7 +18,6 @@ import { Loader2, Plus, Settings, Ruler, Leaf, ListTree, AlertCircle, Trash2, Ma
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
 
-
 export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('crops'); 
@@ -70,20 +69,19 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [defaultUom, setDefaultUom] = useState<string>('');
 
   // Form States for Masters
- // 🚀 UPDATED: Added 'id' to all form states for Edit tracking
- const [newCrop, setNewCrop] = useState({ id: '', name: '', category: '' });
- const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
- const [newStage, setNewStage] = useState({ id: '', name: '' });
- const [newUom, setNewUom] = useState({ id: '', name: '', symbol: '' });
- 
- const [newParam, setNewParam] = useState({ 
-  id: '', label: '', type: 'Numeric', options: [] as string[], uoms: [] as string[], defaultUom: '' 
-});
-const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typing individual dropdown options
- 
- const [newGls, setNewGls] = useState({
-   id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: ''
- });
+  const [newCrop, setNewCrop] = useState({ id: '', name: '', category: '' });
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newStage, setNewStage] = useState({ id: '', name: '' });
+  const [newUom, setNewUom] = useState({ id: '', name: '', symbol: '' });
+  
+  const [newParam, setNewParam] = useState({ 
+    id: '', label: '', type: 'Numeric', options: [] as string[], uoms: [] as string[], defaultUom: '' 
+  });
+  const [optionInput, setOptionInput] = useState(''); 
+  
+  const [newGls, setNewGls] = useState({
+    id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: ''
+  });
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const db = supabase as any;
@@ -162,14 +160,8 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
       .select(`
         id, stage_sequence, chemical_recommendation_and_dosage,
         master_crop_stages ( stage_name ),
-        sop_applications ( 
-          id, application_type, das, application_method, dosage_value, benefit, impact, recommendation, chemical_name, chemical_dosage,
-          master_gls_products ( product_name )
-        ),
-        sop_parameters ( 
-          is_mandatory, 
-          master_parameters ( parameter_label ) 
-        )
+        sop_applications ( id, application_type, das, application_method, dosage_value, benefit, impact, recommendation, chemical_name, chemical_dosage, master_gls_products ( product_name ) ),
+        sop_parameters ( is_mandatory, master_parameters ( parameter_label ) )
       `)
       .eq('crop_id', crop.id)
       .order('stage_sequence', { ascending: true });
@@ -185,9 +177,7 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     }
     setLoadingViewSop(false);
   };
-// 🚀 NEW: Creates a flat list of ALL crops currently assigned to ANY group to prevent double-booking
 
-  // Deep clone SOP from a source crop to multiple target crops
   const cloneSopToNewCrops = async (sourceCropId: string, targetCropIds: string[]) => {
     const { data: sourceStages } = await db.from('sop_crop_stages').select('*').eq('crop_id', sourceCropId);
     if (!sourceStages || sourceStages.length === 0) return;
@@ -197,28 +187,19 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
 
       for (const stage of sourceStages) {
         const { data: newStage } = await db.from('sop_crop_stages').insert([{
-          crop_id: targetCropId,
-          stage_id: stage.stage_id,
-          stage_sequence: stage.stage_sequence,
-          chemical_recommendation_and_dosage: stage.chemical_recommendation_and_dosage
+          crop_id: targetCropId, stage_id: stage.stage_id, stage_sequence: stage.stage_sequence, chemical_recommendation_and_dosage: stage.chemical_recommendation_and_dosage
         }]).select('id').single();
 
         if (newStage) {
           const { data: sourceApps } = await db.from('sop_applications').select('*').eq('sop_crop_stage_id', stage.id);
           if (sourceApps && sourceApps.length > 0) {
-            const newApps = sourceApps.map((app: any) => {
-              const { id, ...rest } = app;
-              return { ...rest, sop_crop_stage_id: newStage.id };
-            });
+            const newApps = sourceApps.map((app: any) => { const { id, ...rest } = app; return { ...rest, sop_crop_stage_id: newStage.id }; });
             await db.from('sop_applications').insert(newApps);
           }
 
           const { data: sourceParams } = await db.from('sop_parameters').select('*').eq('sop_crop_stage_id', stage.id);
           if (sourceParams && sourceParams.length > 0) {
-            const newParams = sourceParams.map((p: any) => {
-              const { id, ...rest } = p;
-              return { ...rest, sop_crop_stage_id: newStage.id };
-            });
+            const newParams = sourceParams.map((p: any) => { const { id, ...rest } = p; return { ...rest, sop_crop_stage_id: newStage.id }; });
             await db.from('sop_parameters').insert(newParams);
           }
         }
@@ -226,7 +207,6 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     }
   };
 
-  // 🚀 GROUP MANAGEMENT LOGIC
   const openEditGroup = (group: any) => {
     setEditingGroup(group);
     setGroupForm({ crops: group.crop_ids || [] });
@@ -242,7 +222,6 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     const removedCrops = oldCrops.filter((id: string) => !groupForm.crops.includes(id));
     const sourceCropId = oldCrops.length > 0 ? oldCrops[0] : groupForm.crops[0];
 
-    // 🚀 1. SAFELY WIPE SOP DATA FOR REMOVED CROPS
     if (removedCrops.length > 0) {
       toast({ title: "Cleaning Up", description: "Wiping previous SOP schedules for removed crops..." });
       for (const cropId of removedCrops) {
@@ -256,16 +235,12 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
       }
     }
 
-    // 🚀 2. CLONE SOP FOR NEW CROPS
     if (sourceCropId && newlyAddedCrops.length > 0) {
       toast({ title: "Cloning SOP", description: "Applying group SOP to the newly added crops..." });
       await cloneSopToNewCrops(sourceCropId, newlyAddedCrops);
     }
 
-    // 🚀 3. UPDATE THE GROUP
-    const { error } = await db.from('sop_groups').update({
-      crop_ids: groupForm.crops
-    }).eq('id', editingGroup.id);
+    const { error } = await db.from('sop_groups').update({ crop_ids: groupForm.crops }).eq('id', editingGroup.id);
 
     if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
     else toast({ title: "Success", description: "Group updated & SOP applied successfully." });
@@ -284,48 +259,36 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
   const handleEditGroupSop = async (group: any) => {
     setLoading(true);
     setLayoutCategory(group.category);
-    setLayoutCrops(group.crop_ids || []);
+    
+    // 🚀 BULLETPROOF FIX: Strip out any crop IDs that might have been deleted from the master list!
+    const validCropIds = (group.crop_ids || []).filter((id: string) => crops.some(c => c.id === id));
+    setLayoutCrops(validCropIds);
 
-    // 🚀 FIX: Fetch distinct stages used by these crops to populate the SOP Builder
-    const { data: stagesData } = await db
-      .from('sop_crop_stages')
-      .select('stage_id')
-      .in('crop_id', group.crop_ids)
-      .order('stage_sequence', { ascending: true });
+    const { data: stagesData } = await db.from('sop_crop_stages').select('stage_id').in('crop_id', validCropIds).order('stage_sequence', { ascending: true });
 
     if (stagesData) {
-      // 🚀 FIXED: Explicitly typed as string[] and cast s.stage_id to String
       const uniqueStageIds: string[] = Array.from(new Set(stagesData.map((s: any) => String(s.stage_id))));
       setLayoutStages(uniqueStageIds);
-      
-      // Set the first stage as active
-      if (uniqueStageIds.length > 0) {
+      if (uniqueStageIds.length > 0 && validCropIds.length > 0) {
         setActiveSopStage(uniqueStageIds[0]);
-        // Load the data for the first crop and first stage
-        await loadExistingSOP(group.crop_ids[0], uniqueStageIds[0]);
+        await loadExistingSOP(validCropIds[0], uniqueStageIds[0]);
       }
     }
 
-    setActiveTab('layout'); // Jump to the SOP Builder tab
+    setActiveTab('layout'); 
     setLoading(false);
     toast({ title: "Loaded Group", description: "Crops and stages populated in SOP Builder." });
   };
 
   const handleViewGroupSop = (group: any) => {
-    if (!group.crop_ids || group.crop_ids.length === 0) {
-      return toast({ title: "Empty Group", description: "No crops in this group to preview.", variant: "destructive" });
-    }
+    if (!group.crop_ids || group.crop_ids.length === 0) return toast({ title: "Empty Group", description: "No crops in this group to preview.", variant: "destructive" });
     const representativeCrop = crops.find(c => c.id === group.crop_ids[0]);
-    if (representativeCrop) {
-      handleViewCropSop({ ...representativeCrop, crop_name: `${group.group_name} (Preview)` });
-    }
+    if (representativeCrop) handleViewCropSop({ ...representativeCrop, crop_name: `${group.group_name} (Preview)` });
   };
-  const allAssignedCropIds = Array.from(new Set(sopGroups.flatMap(g => g.crop_ids || [])));
 
+  const allAssignedCropIds = Array.from(new Set(sopGroups.flatMap(g => g.crop_ids || [])));
   const uniqueCategories = Array.from(new Set(crops.map(c => c.crop_category).filter(Boolean)));
   
-  // 🚀 FIXED: Hide crops that are already in a group from the SOP Builder, 
-  // UNLESS they are actively loaded into the builder right now.
   const filteredCropsForLayout = crops.filter(c => {
     const matchesCategory = layoutCategory ? c.crop_category === layoutCategory : true;
     const isAvailable = !allAssignedCropIds.includes(c.id) || layoutCrops.includes(c.id);
@@ -352,10 +315,17 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
   };
 
   const saveExecutionOrder = async () => {
-    if (layoutCrops.length === 0 || layoutStages.length === 0) return;
+    // 🚀 SANITIZER: Filter out any deleted "ghost" crops before processing
+    const activeValidCrops = layoutCrops.filter(id => crops.some(c => c.id === id));
+    
+    if (activeValidCrops.length === 0 || layoutStages.length === 0) {
+      if (layoutCrops.length > 0) setLayoutCrops([]); // Clean up bad memory
+      return toast({ title: "Error", description: "No valid crops selected. They may have been deleted.", variant: "destructive" });
+    }
+
     setLoading(true);
     try {
-      for (const cropId of layoutCrops) {
+      for (const cropId of activeValidCrops) {
         for (let i = 0; i < layoutStages.length; i++) {
           const stageId = layoutStages[i];
           const seq = i + 1;
@@ -368,36 +338,24 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
         }
       }
 
-      // 🚀 BULLETPROOF AUTO-GROUPING
-      if (layoutCrops.length > 0) {
-        // Automatically figure out the category from the first selected crop if the dropdown is empty
-        const derivedCategory = layoutCategory || crops.find(c => c.id === layoutCrops[0])?.crop_category || 'Mixed';
-
-        const existingGroup = sopGroups.find(g => 
-          g.crop_ids?.length === layoutCrops.length && 
-          g.crop_ids?.every((id: string) => layoutCrops.includes(id))
-        );
+      if (activeValidCrops.length > 0) {
+        const derivedCategory = layoutCategory || crops.find(c => c.id === activeValidCrops[0])?.crop_category || 'Mixed';
+        const existingGroup = sopGroups.find(g => g.crop_ids?.length === activeValidCrops.length && g.crop_ids?.every((id: string) => activeValidCrops.includes(id)));
 
         if (!existingGroup) {
-          const cropNames = layoutCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
+          const cropNames = activeValidCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
           const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
           const groupName = `${derivedCategory}: ${namePreview}`;
 
-          const { data: newGroup, error: grpErr } = await db.from('sop_groups').insert([{
-            group_name: groupName,
-            category: derivedCategory,
-            crop_ids: layoutCrops
-          }]).select().single();
-          
-          if (grpErr) {
-            toast({ title: "Group Creation Blocked", description: grpErr.message, variant: "destructive" });
-          } else if (newGroup) {
-            setSopGroups(prev => [newGroup, ...prev]);
-            toast({ title: "Auto-Group Created", description: `Group "${groupName}" created successfully.` });
-          }
+          const { data: newGroup, error: grpErr } = await db.from('sop_groups').insert([{ group_name: groupName, category: derivedCategory, crop_ids: activeValidCrops }]).select().single();
+          if (grpErr) toast({ title: "Group Creation Blocked", description: grpErr.message, variant: "destructive" });
+          else if (newGroup) { setSopGroups(prev => [newGroup, ...prev]); toast({ title: "Auto-Group Created", description: `Group "${groupName}" created successfully.` }); }
         }
       }
-
+      
+      // Auto-update memory if we caught ghost crops
+      if (activeValidCrops.length !== layoutCrops.length) setLayoutCrops(activeValidCrops);
+      
       toast({ title: "Order Saved", description: "Global stage sequence locked in." });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
@@ -405,38 +363,72 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     setLoading(false);
   };
 
-
   // ==========================================
-  // 🚀 NEW: UNIVERSAL DELETE & EDIT OPENERS
+  // 🚀 BULLETPROOF UNIVERSAL DELETE & EDIT OPENERS
   // ==========================================
   const deleteMaster = async (table: string, id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete "${name}"?\nWARNING: This may break active SOPs using it.`)) return;
-    const { error } = await db.from(table).delete().eq('id', id);
-    if (error) toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
-    else { toast({ title: "Deleted", description: `${name} removed.` }); fetchMasters(); }
+    if (!confirm(`Are you sure you want to delete "${name}"?\nWARNING: This action is permanent and may affect related data.`)) return;
+    
+    setLoading(true);
+    try {
+      // 🚀 BULLETPROOF: Immediately purge deleted items from the UI Memory!
+      if (table === 'master_crops') {
+        setLayoutCrops(prev => prev.filter(cid => cid !== id)); 
+        
+        const affectedGroups = sopGroups.filter(g => g.crop_ids?.includes(id));
+        for (const group of affectedGroups) {
+          const newCropIds = group.crop_ids.filter((cid: string) => cid !== id);
+          if (newCropIds.length === 0) {
+            await db.from('sop_groups').delete().eq('id', group.id);
+          } else {
+            const remainingCrops = crops.filter(c => newCropIds.includes(c.id));
+            const cropNames = remainingCrops.map(c => c.crop_name).filter(Boolean);
+            const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
+            const newGroupName = `${group.category}: ${namePreview}`;
+            await db.from('sop_groups').update({ crop_ids: newCropIds, group_name: newGroupName }).eq('id', group.id);
+          }
+        }
+      }
+
+      if (table === 'master_crop_stages') {
+        setLayoutStages(prev => prev.filter(sid => sid !== id));
+        if (activeSopStage === id) setActiveSopStage('');
+      }
+
+      const { error } = await db.from(table).delete().eq('id', id);
+      if (error) throw error;
+      
+      toast({ title: "Deleted", description: `"${name}" removed successfully.` });
+      fetchMasters();
+      
+    } catch (err: any) {
+      if (err.message?.includes('foreign key constraint')) {
+        toast({ title: "Delete Blocked by Database", description: `Cannot delete "${name}" because it is actively linked to other records.`, variant: "destructive" });
+      } else {
+        toast({ title: "Delete Failed", description: err.message, variant: "destructive" });
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openEditCrop = (c: any) => { setNewCrop({ id: c.id, name: c.crop_name, category: c.crop_category }); setIsAddingNewCategory(false); setIsCropOpen(true); };
   const openEditStage = (s: any) => { setNewStage({ id: s.id, name: s.stage_name }); setIsStageOpen(true); };
   const openEditUom = (u: any) => { setNewUom({ id: u.id, name: u.uom_name, symbol: u.uom_symbol }); setIsUomOpen(true); };
   const openEditGls = (g: any) => { setNewGls({ id: g.id, name: g.product_name, ingredients: g.active_ingredients || '', description: g.description || '', benefits: g.benefits || '', impact: g.impact || '', image_url: g.image_url || '' }); setIsGlsOpen(true); };
+  
   const openEditParam = async (p: any) => { 
     const { data } = await db.from('parameter_uom_mapping').select('*').eq('parameter_id', p.id);
     const mappedUoms = data ? data.map((d: any) => d.uom_id) : [];
     const defUom = data?.find((d: any) => d.is_default_uom)?.uom_id || '';
-    
-    // 🚀 FIXED: Pass options as an array instead of a joined string
     setNewParam({ id: p.id, label: p.parameter_label, type: p.ui_input_type, options: p.options_data || [], uoms: mappedUoms, defaultUom: defUom });
     setOptionInput('');
     setIsParamOpen(true); 
   };
 
-  // 🚀 NEW: Helper functions to add/remove dropdown options dynamically
   const handleAddOption = () => {
     if (!optionInput.trim()) return;
-    if (newParam.options.includes(optionInput.trim())) {
-      return toast({ title: "Duplicate", description: "This option already exists.", variant: "destructive" });
-    }
+    if (newParam.options.includes(optionInput.trim())) return toast({ title: "Duplicate", description: "This option already exists.", variant: "destructive" });
     setNewParam(prev => ({ ...prev, options: [...prev.options, optionInput.trim()] }));
     setOptionInput('');
   };
@@ -445,10 +437,6 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     setNewParam(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== index) }));
   };
 
-  // Masters Handlers
-  // ==========================================
-  // 🚀 UPDATED: SAVE HANDLERS (CREATE & EDIT)
-  // ==========================================
   const handleAddCrop = async () => {
     if (!newCrop.name.trim() || !newCrop.category.trim()) return toast({ title: "Error", description: "Required", variant: "destructive" });
     if (newCrop.id) await db.from('master_crops').update({ crop_name: newCrop.name.trim(), crop_category: newCrop.category.trim() }).eq('id', newCrop.id);
@@ -474,13 +462,12 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     if (!newParam.label.trim()) return toast({ title: "Error", description: "Label required", variant: "destructive" });
     if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && !newParam.defaultUom) return toast({ title: "Error", description: "Please select a default UOM", variant: "destructive" });
 
-   // 🚀 FIXED: options is already an array now!
-   let options = newParam.type === 'Dropdown Choice' ? newParam.options : [];
+    let options = newParam.type === 'Dropdown Choice' ? newParam.options : [];
     let paramId = newParam.id;
 
     if (newParam.id) {
       await db.from('master_parameters').update({ parameter_label: newParam.label.trim(), ui_input_type: newParam.type, options_data: options }).eq('id', newParam.id);
-      await db.from('parameter_uom_mapping').delete().eq('parameter_id', newParam.id); // Wipe old mappings
+      await db.from('parameter_uom_mapping').delete().eq('parameter_id', newParam.id); 
     } else {
       const { data: pData, error } = await db.from('master_parameters').insert([{ parameter_label: newParam.label.trim(), ui_input_type: newParam.type, options_data: options }]).select('id').single();
       if (error) return toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -498,19 +485,6 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     toast({ title: "Success", description: "Parameter mapped and saved!" });
   };
 
-  const handleAddGls = async () => {
-    if (!newGls.name.trim()) return toast({ title: "Error", description: "Product name is required.", variant: "destructive" });
-    const payload = { product_name: newGls.name, active_ingredients: newGls.ingredients, description: newGls.description, benefits: newGls.benefits, impact: newGls.impact, image_url: newGls.image_url };
-    
-    if (newGls.id) await db.from('master_gls_products').update(payload).eq('id', newGls.id);
-    else await db.from('master_gls_products').insert([payload]);
-    
-    setIsGlsOpen(false); setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' }); fetchMasters();
-  };
-
-
-
-  // 2. New Cloudinary Upload Handler
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       const file = e.target.files?.[0];
@@ -536,8 +510,15 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     }
   };
 
-  // 3. Updated Product Logic (Includes Image URL)
-
+  const handleAddGls = async () => {
+    if (!newGls.name.trim()) return toast({ title: "Error", description: "Product name is required.", variant: "destructive" });
+    const payload = { product_name: newGls.name, active_ingredients: newGls.ingredients, description: newGls.description, benefits: newGls.benefits, impact: newGls.impact, image_url: newGls.image_url };
+    
+    if (newGls.id) await db.from('master_gls_products').update(payload).eq('id', newGls.id);
+    else await db.from('master_gls_products').insert([payload]);
+    
+    setIsGlsOpen(false); setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' }); fetchMasters();
+  };
 
   const openUomMapping = async (param: any) => {
     setActiveParam(param);
@@ -587,7 +568,14 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
   const removeParamRow = (index: number) => { setSelectedParams(selectedParams.filter((_, i) => i !== index)); };
 
   const saveActiveStageSop = async () => {
-    if (layoutCrops.length === 0 || !activeSopStage) return toast({ title: "Error", description: "Select crop and stage.", variant: "destructive" });
+    // 🚀 SANITIZER: Filter out any deleted "ghost" crops before processing
+    const activeValidCrops = layoutCrops.filter(id => crops.some(c => c.id === id));
+    
+    if (activeValidCrops.length === 0 || !activeSopStage) {
+      if (layoutCrops.length > 0) setLayoutCrops([]); // Clean up bad memory
+      return toast({ title: "Error", description: "Select valid crop and stage.", variant: "destructive" });
+    }
+    
     const hasEmptyDas = applications.some(a => a.das === '' || a.das === null);
     if (hasEmptyDas) return toast({ title: "Error", description: "DAS is required for all applications.", variant: "destructive" });
 
@@ -596,7 +584,8 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
     try {
       const stageSeq = layoutStages.indexOf(activeSopStage) + 1;
 
-      for (const cropId of layoutCrops) {
+      // 🚀 FIXED: Loop through `activeValidCrops` instead of the raw state
+      for (const cropId of activeValidCrops) {
         let parentId;
         const { data: existingParent } = await db.from('sop_crop_stages').select('id').eq('crop_id', cropId).eq('stage_id', activeSopStage).maybeSingle();
 
@@ -646,37 +635,11 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
         }
       }
 
-      // 🚀 BULLETPROOF AUTO-GROUPING (Failsafe in case they skipped the Lock Order button)
-      if (layoutCrops.length > 0) {
-        const derivedCategory = layoutCategory || crops.find(c => c.id === layoutCrops[0])?.crop_category || 'Mixed';
+      // Auto-update memory if we caught ghost crops
+      if (activeValidCrops.length !== layoutCrops.length) setLayoutCrops(activeValidCrops);
 
-        const existingGroup = sopGroups.find(g => 
-          g.crop_ids?.length === layoutCrops.length && 
-          g.crop_ids?.every((id: string) => layoutCrops.includes(id))
-        );
-
-        if (!existingGroup) {
-          const cropNames = layoutCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
-          const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
-          const groupName = `${derivedCategory}: ${namePreview}`;
-
-          const { data: newGroup, error: grpErr } = await db.from('sop_groups').insert([{
-            group_name: groupName,
-            category: derivedCategory,
-            crop_ids: layoutCrops
-          }]).select().single();
-          
-          if (grpErr) {
-            toast({ title: "Group Creation Blocked", description: grpErr.message, variant: "destructive" });
-          } else if (newGroup) {
-            setSopGroups(prev => [newGroup, ...prev]);
-            toast({ title: "Auto-Group Created", description: `Group "${groupName}" created successfully.` });
-          }
-        }
-      }
-
-      toast({ title: "Success!", description: `Stage SOP saved for ${layoutCrops.length} crop(s).` });
-      if (layoutCrops.length === 1) loadExistingSOP(layoutCrops[0], activeSopStage);
+      toast({ title: "Success!", description: `Stage SOP saved for ${activeValidCrops.length} crop(s).` });
+      if (activeValidCrops.length === 1) loadExistingSOP(activeValidCrops[0], activeSopStage);
       
     } catch (err: any) {
       toast({ title: "Save Failed", description: err.message, variant: "destructive" });
@@ -697,10 +660,8 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
             <TabsTrigger value="crops" className="gap-2"><Leaf className="h-4 w-4"/> Crops</TabsTrigger>
             <TabsTrigger value="stages" className="gap-2"><ListTree className="h-4 w-4"/> Stages</TabsTrigger>
             <TabsTrigger value="gls" className="gap-2"><FlaskConical className="h-4 w-4"/> Products</TabsTrigger>
-            
             <TabsTrigger value="uom" className="gap-2"><Ruler className="h-4 w-4"/> UOMs</TabsTrigger>
             <TabsTrigger value="parameters" className="gap-2"><Settings className="h-4 w-4"/> Parameters</TabsTrigger>
-            
             <TabsTrigger value="layout" className="gap-2 bg-primary/5 data-[state=active]:bg-primary/10"><Map className="h-4 w-4"/> SOP Builder</TabsTrigger>
             <TabsTrigger value="groups" className="gap-2"><Layers className="h-4 w-4"/> SOP Groups</TabsTrigger>
           </TabsList>
@@ -732,9 +693,12 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
                           </div>
                         </CardHeader>
                         <CardContent className="py-4 flex-1">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Included Crops ({group.crop_ids?.length || 0})</p>
+                          {/* 🚀 FIXED: Dynamically calculates the length of ONLY valid, existing crops */}
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">
+                            Included Crops ({ (group.crop_ids || []).filter((id: string) => crops.some(c => c.id === id)).length })
+                          </p>
                           <div className="flex flex-wrap gap-2">
-                            {group.crop_ids?.map((id: string) => {
+                            {(group.crop_ids || []).map((id: string) => {
                               const crop = crops.find(c => c.id === id);
                               return crop ? <Badge key={id} variant="secondary" className="font-normal">{crop.crop_name}</Badge> : null;
                             })}
@@ -750,7 +714,6 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
                             </Button>
                           </div>
                           <div className="flex gap-2">
-                            {/* 🚀 ONLY EDIT/DELETE EXITS HERE */}
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => openEditGroup(group)}>
                               <Edit2 className="h-4 w-4" />
                             </Button>
@@ -766,7 +729,6 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
               </CardContent>
             </Card>
             
-            {/* 🚀 SIMPLIFIED GROUP MANAGEMENT DIALOG */}
             <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
               <DialogContent className="max-w-md">
                 <DialogHeader>
@@ -786,16 +748,15 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
                         <span className="text-xs text-muted-foreground font-normal">{groupForm.crops.length} selected</span>
                       </Label>
                       <div className="bg-slate-50 border rounded-md p-3 max-h-[250px] overflow-y-auto grid grid-cols-2 gap-2 shadow-inner">
-    {crops
-      // 🚀 FIXED: Only show crops that are unassigned OR already belong to THIS group
-      .filter(c => c.crop_category === editingGroup?.category && (!allAssignedCropIds.includes(c.id) || groupForm.crops.includes(c.id)))
-      .map(c => (
-      <div key={c.id} className="flex items-center space-x-2 bg-white p-1.5 border rounded-sm">
-        <Checkbox id={`g-crop-${c.id}`} checked={groupForm.crops.includes(c.id)} onCheckedChange={() => toggleGroupCrop(c.id)} />
-        <Label htmlFor={`g-crop-${c.id}`} className="text-xs font-medium cursor-pointer truncate flex-1">{c.crop_name}</Label>
-      </div>
-    ))}
-  </div>
+                        {crops
+                          .filter(c => c.crop_category === editingGroup?.category && (!allAssignedCropIds.includes(c.id) || groupForm.crops.includes(c.id)))
+                          .map(c => (
+                          <div key={c.id} className="flex items-center space-x-2 bg-white p-1.5 border rounded-sm">
+                            <Checkbox id={`g-crop-${c.id}`} checked={groupForm.crops.includes(c.id)} onCheckedChange={() => toggleGroupCrop(c.id)} />
+                            <Label htmlFor={`g-crop-${c.id}`} className="text-xs font-medium cursor-pointer truncate flex-1">{c.crop_name}</Label>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1230,6 +1191,7 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
               </CardContent>
             </Card>
           </TabsContent>
+          
           {/* ==================== SPREADSHEET SOP BUILDER TAB ==================== */}
           <TabsContent value="layout">
             <div className="grid grid-cols-1 gap-6">
@@ -1498,120 +1460,118 @@ const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typin
               )}
             </div>
           </TabsContent>
+
+          {/* UOM MAPPING DIALOG */}
+          <Dialog open={isMapUomOpen} onOpenChange={setIsMapUomOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Map Units of Measurement</DialogTitle>
+                <DialogDescription>Select valid UOMs for <strong className="text-foreground">{activeParam?.parameter_label}</strong></DialogDescription>
+              </DialogHeader>
+              <div className="py-4 space-y-4">
+                <div className="border rounded-md p-4 bg-muted/20 space-y-3">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider mb-2 block">1. Select Allowed UOMs</Label>
+                  <div className="grid grid-cols-2 gap-3 max-h-[200px] overflow-y-auto">
+                    {uoms.map(u => (
+                      <div key={u.id} className="flex items-center space-x-2">
+                        <Checkbox id={`uom-${u.id}`} checked={selectedUoms.includes(u.id)} onCheckedChange={() => toggleUomSelection(u.id)} />
+                        <Label htmlFor={`uom-${u.id}`} className="text-sm font-medium leading-none cursor-pointer">{u.uom_name} ({u.uom_symbol})</Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedUoms.length > 0 && (
+                  <div className="space-y-2 animate-in fade-in duration-300">
+                    <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider block">2. Select Default Layout Choice</Label>
+                    <Select value={defaultUom} onValueChange={setDefaultUom}>
+                      <SelectTrigger><SelectValue placeholder="Select default UOM..." /></SelectTrigger>
+                      <SelectContent>
+                        {uoms.filter(u => selectedUoms.includes(u.id)).map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.uom_name} ({u.uom_symbol})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">This is the unit the mobile app will select by default on the field.</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter><Button onClick={saveUomMapping}>Save Mappings</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
           
+          {/* FULL EXCEL-STYLE CROP SOP VIEWER DIALOG */}
+          <Dialog open={isSopViewOpen} onOpenChange={setIsSopViewOpen}>
+            <DialogContent className="max-w-[95vw] w-full max-h-[90vh] flex flex-col p-0 overflow-hidden">
+              <DialogHeader className="px-6 py-4 border-b bg-muted/10 shrink-0">
+                <DialogTitle className="flex items-center gap-2 text-xl">
+                  <CheckSquare className="h-5 w-5 text-primary" /> SOP Format View: <span className="text-primary font-bold">{viewCrop?.crop_name}</span>
+                </DialogTitle>
+                <DialogDescription>Read-only view of the chronologically mapped stages, applications, and parameters.</DialogDescription>
+              </DialogHeader>
+              
+              <div className="flex-1 overflow-auto p-6 bg-slate-50">
+                {loadingViewSop ? (
+                   <div className="flex flex-col items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" /><p className="text-sm text-muted-foreground">Generating Table...</p></div>
+                ) : viewSopData.length === 0 ? (
+                   <div className="flex flex-col items-center justify-center py-20 bg-white border border-dashed rounded-lg"><AlertCircle className="h-10 w-10 text-muted-foreground mb-4 opacity-30" /><p className="text-sm font-semibold text-muted-foreground">No SOP Data Found</p><p className="text-xs text-muted-foreground mt-1">Configure this crop in the SOP Builder tab first.</p></div>
+                ) : (
+                  <div className="bg-white border shadow-sm rounded-lg overflow-x-auto">
+                    <Table className="min-w-[1500px]">
+                      <TableHeader className="bg-slate-100/80">
+                        <TableRow>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 w-[180px]">Crop Stage</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Application</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">DAS</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Application Method</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 text-primary">Product</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Dosage / Acre</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Benefit</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Impact</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Recommendation</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Chemicals</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Dosage / Acre</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800">Parameters To measure</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {viewSopData.map((stage) => {
+                          const apps = stage.sop_applications.length > 0 ? stage.sop_applications : [{}]; 
+                          const rowSpan = apps.length;
+                          const paramText = stage.sop_parameters.length > 0 
+                            ? stage.sop_parameters.map((p: any, i: number) => `${i + 1}. ${p.master_parameters.parameter_label} ${p.is_mandatory ? '(Req)' : ''}`).join('\n')
+                            : '--';
+
+                          return apps.map((app: any, idx: number) => (
+                            <TableRow key={`${stage.id}-${idx}`} className="hover:bg-transparent">
+                              {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-slate-50 font-bold align-top whitespace-pre-wrap">{stage.master_crop_stages?.stage_name}</TableCell>}
+                              
+                              <TableCell className="border border-slate-200 align-top">{app.application_type || '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top">{app.das ?? '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.application_method || '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top font-bold text-primary">{app.master_gls_products?.product_name || '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top">{app.dosage_value || '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.benefit || '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.impact || '--'}</TableCell>
+                              
+                              {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-slate-50 align-top whitespace-pre-wrap">{stage.chemical_recommendation_and_dosage || '--'}</TableCell>}
+                              
+                              <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.chemical_name || '--'}</TableCell>
+                              <TableCell className="border border-slate-200 align-top">{app.chemical_dosage || '--'}</TableCell>
+                              
+                              {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-red-50/30 align-top font-medium whitespace-pre-wrap leading-relaxed">{paramText}</TableCell>}
+                            </TableRow>
+                          ));
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </Tabs>
       </div>
-
-      {/* UOM MAPPING DIALOG */}
-      <Dialog open={isMapUomOpen} onOpenChange={setIsMapUomOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Map Units of Measurement</DialogTitle>
-            <DialogDescription>Select valid UOMs for <strong className="text-foreground">{activeParam?.parameter_label}</strong></DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="border rounded-md p-4 bg-muted/20 space-y-3">
-              <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider mb-2 block">1. Select Allowed UOMs</Label>
-              <div className="grid grid-cols-2 gap-3 max-h-[200px] overflow-y-auto">
-                {uoms.map(u => (
-                  <div key={u.id} className="flex items-center space-x-2">
-                    <Checkbox id={`uom-${u.id}`} checked={selectedUoms.includes(u.id)} onCheckedChange={() => toggleUomSelection(u.id)} />
-                    <Label htmlFor={`uom-${u.id}`} className="text-sm font-medium leading-none cursor-pointer">{u.uom_name} ({u.uom_symbol})</Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {selectedUoms.length > 0 && (
-              <div className="space-y-2 animate-in fade-in duration-300">
-                <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider block">2. Select Default Layout Choice</Label>
-                <Select value={defaultUom} onValueChange={setDefaultUom}>
-                  <SelectTrigger><SelectValue placeholder="Select default UOM..." /></SelectTrigger>
-                  <SelectContent>
-                    {uoms.filter(u => selectedUoms.includes(u.id)).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.uom_name} ({u.uom_symbol})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">This is the unit the mobile app will select by default on the field.</p>
-              </div>
-            )}
-          </div>
-          <DialogFooter><Button onClick={saveUomMapping}>Save Mappings</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      {/* FULL EXCEL-STYLE CROP SOP VIEWER DIALOG */}
-      <Dialog open={isSopViewOpen} onOpenChange={setIsSopViewOpen}>
-        <DialogContent className="max-w-[95vw] w-full max-h-[90vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b bg-muted/10 shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <CheckSquare className="h-5 w-5 text-primary" /> SOP Format View: <span className="text-primary font-bold">{viewCrop?.crop_name}</span>
-            </DialogTitle>
-            <DialogDescription>Read-only view of the chronologically mapped stages, applications, and parameters.</DialogDescription>
-          </DialogHeader>
-          
-          <div className="flex-1 overflow-auto p-6 bg-slate-50">
-            {loadingViewSop ? (
-               <div className="flex flex-col items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" /><p className="text-sm text-muted-foreground">Generating Table...</p></div>
-            ) : viewSopData.length === 0 ? (
-               <div className="flex flex-col items-center justify-center py-20 bg-white border border-dashed rounded-lg"><AlertCircle className="h-10 w-10 text-muted-foreground mb-4 opacity-30" /><p className="text-sm font-semibold text-muted-foreground">No SOP Data Found</p><p className="text-xs text-muted-foreground mt-1">Configure this crop in the SOP Builder tab first.</p></div>
-            ) : (
-              <div className="bg-white border shadow-sm rounded-lg overflow-x-auto">
-                <Table className="min-w-[1500px]">
-                  <TableHeader className="bg-slate-100/80">
-                    <TableRow>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800 w-[180px]">Crop Stage</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Application</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">DAS</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Application Method</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800 text-primary">Product</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Dosage / Acre</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Benefit</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Impact</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Recommendation</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Chemicals</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Dosage / Acre</TableHead>
-                      <TableHead className="border border-slate-200 font-bold text-slate-800">Parameters To measure</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {viewSopData.map((stage) => {
-                      const apps = stage.sop_applications.length > 0 ? stage.sop_applications : [{}]; 
-                      const rowSpan = apps.length;
-                      const paramText = stage.sop_parameters.length > 0 
-                        ? stage.sop_parameters.map((p: any, i: number) => `${i + 1}. ${p.master_parameters.parameter_label} ${p.is_mandatory ? '(Req)' : ''}`).join('\n')
-                        : '--';
-
-                      return apps.map((app: any, idx: number) => (
-                        <TableRow key={`${stage.id}-${idx}`} className="hover:bg-transparent">
-                          {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-slate-50 font-bold align-top whitespace-pre-wrap">{stage.master_crop_stages?.stage_name}</TableCell>}
-                          
-                          <TableCell className="border border-slate-200 align-top">{app.application_type || '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top">{app.das ?? '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.application_method || '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top font-bold text-primary">{app.master_gls_products?.product_name || '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top">{app.dosage_value || '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.benefit || '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.impact || '--'}</TableCell>
-                          
-                          {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-slate-50 align-top whitespace-pre-wrap">{stage.chemical_recommendation_and_dosage || '--'}</TableCell>}
-                          
-                          <TableCell className="border border-slate-200 align-top whitespace-pre-wrap">{app.chemical_name || '--'}</TableCell>
-                          <TableCell className="border border-slate-200 align-top">{app.chemical_dosage || '--'}</TableCell>
-                          
-                          {idx === 0 && <TableCell rowSpan={rowSpan} className="border border-slate-200 bg-red-50/30 align-top font-medium whitespace-pre-wrap leading-relaxed">{paramText}</TableCell>}
-                        </TableRow>
-                      ));
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
- 
     </AppLayout>
   );
 }
