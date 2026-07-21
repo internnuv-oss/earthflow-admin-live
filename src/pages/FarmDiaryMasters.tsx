@@ -70,16 +70,20 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [defaultUom, setDefaultUom] = useState<string>('');
 
   // Form States for Masters
-  const [newCrop, setNewCrop] = useState({ name: '', category: '' });
-  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
-  const [newStage, setNewStage] = useState({ name: '' });
-  const [newUom, setNewUom] = useState({ name: '', symbol: '' });
-  const [newParam, setNewParam] = useState({ 
-    label: '', type: 'Numeric', options: '', uoms: [] as string[], defaultUom: '' 
-  });
-  const [newGls, setNewGls] = useState({
-    name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: ''
-  });
+ // 🚀 UPDATED: Added 'id' to all form states for Edit tracking
+ const [newCrop, setNewCrop] = useState({ id: '', name: '', category: '' });
+ const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+ const [newStage, setNewStage] = useState({ id: '', name: '' });
+ const [newUom, setNewUom] = useState({ id: '', name: '', symbol: '' });
+ 
+ const [newParam, setNewParam] = useState({ 
+  id: '', label: '', type: 'Numeric', options: [] as string[], uoms: [] as string[], defaultUom: '' 
+});
+const [optionInput, setOptionInput] = useState(''); // 🚀 NEW: State for typing individual dropdown options
+ 
+ const [newGls, setNewGls] = useState({
+   id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: ''
+ });
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const db = supabase as any;
@@ -401,54 +405,111 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     setLoading(false);
   };
 
+
+  // ==========================================
+  // 🚀 NEW: UNIVERSAL DELETE & EDIT OPENERS
+  // ==========================================
+  const deleteMaster = async (table: string, id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"?\nWARNING: This may break active SOPs using it.`)) return;
+    const { error } = await db.from(table).delete().eq('id', id);
+    if (error) toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
+    else { toast({ title: "Deleted", description: `${name} removed.` }); fetchMasters(); }
+  };
+
+  const openEditCrop = (c: any) => { setNewCrop({ id: c.id, name: c.crop_name, category: c.crop_category }); setIsAddingNewCategory(false); setIsCropOpen(true); };
+  const openEditStage = (s: any) => { setNewStage({ id: s.id, name: s.stage_name }); setIsStageOpen(true); };
+  const openEditUom = (u: any) => { setNewUom({ id: u.id, name: u.uom_name, symbol: u.uom_symbol }); setIsUomOpen(true); };
+  const openEditGls = (g: any) => { setNewGls({ id: g.id, name: g.product_name, ingredients: g.active_ingredients || '', description: g.description || '', benefits: g.benefits || '', impact: g.impact || '', image_url: g.image_url || '' }); setIsGlsOpen(true); };
+  const openEditParam = async (p: any) => { 
+    const { data } = await db.from('parameter_uom_mapping').select('*').eq('parameter_id', p.id);
+    const mappedUoms = data ? data.map((d: any) => d.uom_id) : [];
+    const defUom = data?.find((d: any) => d.is_default_uom)?.uom_id || '';
+    
+    // 🚀 FIXED: Pass options as an array instead of a joined string
+    setNewParam({ id: p.id, label: p.parameter_label, type: p.ui_input_type, options: p.options_data || [], uoms: mappedUoms, defaultUom: defUom });
+    setOptionInput('');
+    setIsParamOpen(true); 
+  };
+
+  // 🚀 NEW: Helper functions to add/remove dropdown options dynamically
+  const handleAddOption = () => {
+    if (!optionInput.trim()) return;
+    if (newParam.options.includes(optionInput.trim())) {
+      return toast({ title: "Duplicate", description: "This option already exists.", variant: "destructive" });
+    }
+    setNewParam(prev => ({ ...prev, options: [...prev.options, optionInput.trim()] }));
+    setOptionInput('');
+  };
+
+  const handleRemoveOption = (index: number) => {
+    setNewParam(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== index) }));
+  };
+
   // Masters Handlers
+  // ==========================================
+  // 🚀 UPDATED: SAVE HANDLERS (CREATE & EDIT)
+  // ==========================================
   const handleAddCrop = async () => {
     if (!newCrop.name.trim() || !newCrop.category.trim()) return toast({ title: "Error", description: "Required", variant: "destructive" });
-    await db.from('master_crops').insert([{ crop_name: newCrop.name.trim(), crop_category: newCrop.category.trim(), status: 'Active' }]);
-    setIsCropOpen(false); setNewCrop({ name: '', category: '' }); fetchMasters();
+    if (newCrop.id) await db.from('master_crops').update({ crop_name: newCrop.name.trim(), crop_category: newCrop.category.trim() }).eq('id', newCrop.id);
+    else await db.from('master_crops').insert([{ crop_name: newCrop.name.trim(), crop_category: newCrop.category.trim(), status: 'Active' }]);
+    setIsCropOpen(false); setNewCrop({ id: '', name: '', category: '' }); fetchMasters();
   };
+
   const handleAddStage = async () => {
     if (!newStage.name.trim()) return toast({ title: "Error", description: "Required", variant: "destructive" });
-    await db.from('master_crop_stages').insert([{ stage_name: newStage.name.trim(), stage_code: newStage.name.substring(0,3).toUpperCase() }]);
-    setIsStageOpen(false); setNewStage({ name: '' }); fetchMasters();
+    if (newStage.id) await db.from('master_crop_stages').update({ stage_name: newStage.name.trim() }).eq('id', newStage.id);
+    else await db.from('master_crop_stages').insert([{ stage_name: newStage.name.trim(), stage_code: newStage.name.substring(0,3).toUpperCase() }]);
+    setIsStageOpen(false); setNewStage({ id: '', name: '' }); fetchMasters();
   };
+
   const handleAddUom = async () => {
     if (!newUom.name.trim() || !newUom.symbol.trim()) return toast({ title: "Error", description: "Required", variant: "destructive" });
-    await db.from('master_uom').insert([{ uom_name: newUom.name.trim(), uom_symbol: newUom.symbol.trim() }]);
-    setIsUomOpen(false); setNewUom({ name: '', symbol: '' }); fetchMasters();
+    if (newUom.id) await db.from('master_uom').update({ uom_name: newUom.name.trim(), uom_symbol: newUom.symbol.trim() }).eq('id', newUom.id);
+    else await db.from('master_uom').insert([{ uom_name: newUom.name.trim(), uom_symbol: newUom.symbol.trim() }]);
+    setIsUomOpen(false); setNewUom({ id: '', name: '', symbol: '' }); fetchMasters();
   };
-  // 1. Updated Parameter Logic (Handles Inline UOM Mapping)
+
   const handleAddParameter = async () => {
     if (!newParam.label.trim()) return toast({ title: "Error", description: "Label required", variant: "destructive" });
-    if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && !newParam.defaultUom) {
-      return toast({ title: "Error", description: "Please select a default UOM", variant: "destructive" });
+    if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && !newParam.defaultUom) return toast({ title: "Error", description: "Please select a default UOM", variant: "destructive" });
+
+   // 🚀 FIXED: options is already an array now!
+   let options = newParam.type === 'Dropdown Choice' ? newParam.options : [];
+    let paramId = newParam.id;
+
+    if (newParam.id) {
+      await db.from('master_parameters').update({ parameter_label: newParam.label.trim(), ui_input_type: newParam.type, options_data: options }).eq('id', newParam.id);
+      await db.from('parameter_uom_mapping').delete().eq('parameter_id', newParam.id); // Wipe old mappings
+    } else {
+      const { data: pData, error } = await db.from('master_parameters').insert([{ parameter_label: newParam.label.trim(), ui_input_type: newParam.type, options_data: options }]).select('id').single();
+      if (error) return toast({ title: "Error", description: error.message, variant: "destructive" });
+      paramId = pData.id;
     }
 
-    let options = newParam.type === 'Dropdown Choice' ? newParam.options.split(',').map(s=>s.trim()).filter(Boolean) : [];
-    
-    const { data: paramData, error } = await db.from('master_parameters').insert([{ 
-      parameter_label: newParam.label.trim(), 
-      ui_input_type: newParam.type, 
-      options_data: options 
-    }]).select('id').single();
-
-    if (error) return toast({ title: "Error", description: error.message, variant: "destructive" });
-
-    if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && paramData) {
-      const inserts = newParam.uoms.map((uomId: string) => ({
-        parameter_id: paramData.id,
-        uom_id: uomId,
-        is_default_uom: uomId === newParam.defaultUom
-      }));
+    if (newParam.type === 'Numeric' && newParam.uoms.length > 0 && paramId) {
+      const inserts = newParam.uoms.map((uomId: string) => ({ parameter_id: paramId, uom_id: uomId, is_default_uom: uomId === newParam.defaultUom }));
       await db.from('parameter_uom_mapping').insert(inserts);
     }
-
     setIsParamOpen(false); 
-    setNewParam({ label: '', type: 'Numeric', options: '', uoms: [], defaultUom: '' }); 
+    setNewParam({ id: '', label: '', type: 'Numeric', options: [], uoms: [], defaultUom: '' }); 
+    setOptionInput('');
     fetchMasters();
     toast({ title: "Success", description: "Parameter mapped and saved!" });
   };
-  
+
+  const handleAddGls = async () => {
+    if (!newGls.name.trim()) return toast({ title: "Error", description: "Product name is required.", variant: "destructive" });
+    const payload = { product_name: newGls.name, active_ingredients: newGls.ingredients, description: newGls.description, benefits: newGls.benefits, impact: newGls.impact, image_url: newGls.image_url };
+    
+    if (newGls.id) await db.from('master_gls_products').update(payload).eq('id', newGls.id);
+    else await db.from('master_gls_products').insert([payload]);
+    
+    setIsGlsOpen(false); setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' }); fetchMasters();
+  };
+
+
+
   // 2. New Cloudinary Upload Handler
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -476,24 +537,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   };
 
   // 3. Updated Product Logic (Includes Image URL)
-  const handleAddGls = async () => {
-    if (!newGls.name.trim()) return toast({ title: "Validation Error", description: "Product name is required.", variant: "destructive" });
-    const { error } = await supabase.from('master_gls_products').insert([{
-        product_name: newGls.name, 
-        active_ingredients: newGls.ingredients, 
-        description: newGls.description, 
-        benefits: newGls.benefits, 
-        impact: newGls.impact,
-        image_url: newGls.image_url // Includes uploaded image
-      }]);
-    if (error) toast({ title: "Error saving product", description: error.message, variant: "destructive" });
-    else { 
-      toast({ title: "Success", description: "Product configuration added cleanly." }); 
-      setIsGlsOpen(false); 
-      setNewGls({ name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
-      fetchMasters(); 
-    }
-  };
+
 
   const openUomMapping = async (param: any) => {
     setActiveParam(param);
@@ -771,7 +815,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                 <Dialog open={isCropOpen} onOpenChange={(o) => { setIsCropOpen(o); if(!o) setIsAddingNewCategory(false); }}>
                   <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Crop</Button></DialogTrigger>
                   <DialogContent>
-                    <DialogHeader><DialogTitle>Add New Crop</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{newCrop.id ? 'Edit Crop' : 'Add New Crop'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
                       <div className="space-y-2"><Label>Crop Name *</Label><Input placeholder="e.g. Tomato" value={newCrop.name} onChange={e => setNewCrop({...newCrop, name: e.target.value})} /></div>
                       <div className="space-y-2">
@@ -810,9 +854,11 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell className="font-medium pl-6">{c.crop_name}</TableCell>
                         <TableCell><Badge variant="outline" className="bg-slate-50">{c.crop_category}</Badge></TableCell>
                         <TableCell className="text-right pr-6">
-                          <Button variant="outline" size="sm" onClick={() => handleViewCropSop(c)} className="h-8 text-xs text-primary border-primary/20 hover:bg-primary/10">
-                            <Eye className="h-3 w-3 mr-2" /> View SOP Format
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="icon" onClick={() => handleViewCropSop(c)} className="h-8 w-8 text-primary border-primary/20 hover:bg-primary/10" title="View Format"><Eye className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => openEditCrop(c)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_crops', c.id, c.crop_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -830,9 +876,9 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                 <Dialog open={isStageOpen} onOpenChange={setIsStageOpen}>
                   <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Stage</Button></DialogTrigger>
                   <DialogContent>
-                    <DialogHeader><DialogTitle>Add New Stage</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{newStage.id ? 'Edit Stage' : 'Add New Stage'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
-                      <div className="space-y-2"><Label>Stage Name *</Label><Input placeholder="e.g. Flowering" value={newStage.name} onChange={e => setNewStage({ name: e.target.value})} /></div>
+                      <div className="space-y-2"><Label>Stage Name *</Label><Input placeholder="e.g. Flowering" value={newStage.name} onChange={e => setNewStage({...newStage, name: e.target.value})} /></div>
                     </div>
                     <DialogFooter><Button onClick={handleAddStage}>Save Stage</Button></DialogFooter>
                   </DialogContent>
@@ -840,10 +886,27 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
-                  <TableHeader><TableRow><TableHead className="pl-6">Stage Name</TableHead><TableHead>Auto-Generated Code</TableHead></TableRow></TableHeader>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-6">Stage Name</TableHead>
+                      <TableHead>Auto-Generated Code</TableHead>
+                      <TableHead className="text-right pr-6">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
-                    {stages.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-8">No stages defined yet.</TableCell></TableRow>}
-                    {stages.map(s => (<TableRow key={s.id}><TableCell className="font-medium pl-6">{s.stage_name}</TableCell><TableCell><Badge variant="secondary" className="font-mono">{s.stage_code}</Badge></TableCell></TableRow>))}
+                    {stages.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">No stages defined yet.</TableCell></TableRow>}
+                    {stages.map(s => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium pl-6">{s.stage_name}</TableCell>
+                        <TableCell><Badge variant="secondary" className="font-mono">{s.stage_code}</Badge></TableCell>
+                        <TableCell className="text-right pr-6">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="icon" onClick={() => openEditStage(s)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_crop_stages', s.id, s.stage_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -859,17 +922,16 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                   <CardDescription>Registry of products used in applications with rich descriptive parameters.</CardDescription>
                 </div>
                 <Dialog open={isGlsOpen} onOpenChange={(open) => {
-                  if (!open) setNewGls({ name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
+                  if (!open) setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
                   setIsGlsOpen(open);
                 }}>
                   <DialogTrigger asChild>
                     <Button size="sm" className="gap-1.5 shadow-sm"><Plus className="h-4 w-4" /> Add Product</Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
-                    <DialogHeader className="px-6 py-4 border-b bg-muted/30"><DialogTitle>Add New Product Profile</DialogTitle></DialogHeader>
+                    <DialogHeader className="px-6 py-4 border-b bg-muted/30"><DialogTitle>{newGls.id ? 'Edit Product Profile' : 'Add New Product Profile'}</DialogTitle></DialogHeader>
                     <div className="px-6 py-4 max-h-[65vh] overflow-y-auto space-y-5 custom-scrollbar">
                       
-                      {/* NEW: CLOUDINARY IMAGE UPLOAD */}
                       <div className="space-y-2">
                         <Label className="text-sm font-semibold text-foreground">Product Image</Label>
                         <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border border-dashed">
@@ -932,13 +994,14 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableHead className="font-semibold w-[15%]">Active Ingredients</TableHead>
                         <TableHead className="font-semibold w-[20%]">Description</TableHead>
                         <TableHead className="font-semibold w-[20%]">Benefits</TableHead>
-                        <TableHead className="font-semibold w-[20%]">Impact</TableHead>
+                        <TableHead className="font-semibold w-[15%]">Impact</TableHead>
+                        <TableHead className="font-semibold w-[5%] text-right pr-6">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {glsProducts.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                          <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                             <div className="flex flex-col items-center justify-center gap-1">
                               <span className="font-medium text-slate-500">No products cataloged yet.</span>
                             </div>
@@ -963,6 +1026,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                           <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-muted-foreground" title={g.description || ''}>{g.description || '—'}</div></TableCell>
                           <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-slate-600" title={g.benefits || ''}>{g.benefits || '—'}</div></TableCell>
                           <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-slate-600" title={g.impact || ''}>{g.impact || '—'}</div></TableCell>
+                          <TableCell className="align-top pt-4 text-right pr-6">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => openEditGls(g)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_gls_products', g.id, g.product_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -971,19 +1040,22 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           {/* ==================== PARAMETERS TAB ==================== */}
           <TabsContent value="parameters">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
                 <div><CardTitle>Master Parameter Registry</CardTitle><CardDescription>Central pool of parameters mapped to multiple UOMs.</CardDescription></div>
                 <Dialog open={isParamOpen} onOpenChange={(open) => {
-                  if(!open) setNewParam({ label: '', type: 'Numeric', options: '', uoms: [], defaultUom: '' });
+                  if(!open) {
+                    setNewParam({ id: '', label: '', type: 'Numeric', options: [], uoms: [], defaultUom: '' });
+                    setOptionInput('');
+                  }
                   setIsParamOpen(open);
                 }}>
                   <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Parameter</Button></DialogTrigger>
                   <DialogContent className="sm:max-w-[450px]">
-                    <DialogHeader><DialogTitle>Add New Parameter</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{newParam.id ? 'Edit Parameter' : 'Add New Parameter'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
                       <div className="space-y-2"><Label>Parameter Label *</Label><Input placeholder="e.g. Plant Height" value={newParam.label} onChange={e => setNewParam({...newParam, label: e.target.value})} /></div>
                       <div className="space-y-2">
@@ -995,19 +1067,52 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                             <SelectItem value="Dropdown Choice">Dropdown Choice</SelectItem>
                             <SelectItem value="Boolean">Boolean (Yes/No)</SelectItem>
                             <SelectItem value="Textarea">Textarea (Long text)</SelectItem>
-                            <SelectItem value="Upload Image">Upload Image</SelectItem> {/* 🚀 NEW TYPE */}
+                            <SelectItem value="Upload Image">Upload Image</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       {newParam.type === 'Dropdown Choice' && (
-                        <div className="space-y-2 animate-in fade-in">
-                          <Label>Dropdown Options *</Label>
-                          <Input placeholder="e.g. Dark Green, Light Green, Yellow" value={newParam.options} onChange={e => setNewParam({...newParam, options: e.target.value})} />
+                        <div className="space-y-3 animate-in fade-in bg-slate-50 p-4 border rounded-xl">
+                          <Label className="text-xs font-bold uppercase text-slate-500">Define Dropdown Choices</Label>
+                          <div className="flex gap-2">
+                            <Input 
+                              placeholder="Type an option and press Enter..." 
+                              className="bg-white"
+                              value={optionInput} 
+                              onChange={e => setOptionInput(e.target.value)} 
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddOption();
+                                }
+                              }}
+                            />
+                            <Button type="button" onClick={handleAddOption} className="shrink-0 shadow-sm">Add</Button>
+                          </div>
+                          
+                          {newParam.options.length > 0 ? (
+                            <div className="flex flex-wrap gap-2 mt-3 p-3 bg-white border rounded-md shadow-inner min-h-[60px]">
+                              {newParam.options.map((opt, idx) => (
+                                <Badge key={idx} variant="outline" className="bg-slate-50 flex items-center gap-1.5 pl-2 pr-1.5 py-1 text-sm font-normal">
+                                  {opt}
+                                  <div 
+                                    className="cursor-pointer hover:bg-red-100 rounded-full p-1 transition-colors" 
+                                    onClick={() => handleRemoveOption(idx)}
+                                  >
+                                    <Trash2 className="h-3 w-3 text-red-500" />
+                                  </div>
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-3 p-4 bg-white border border-dashed rounded-md text-center text-xs text-muted-foreground">
+                              No options added yet. Type above and click Add.
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      {/* 🚀 INLINE UOM SELECTION FOR NUMERIC TYPES */}
                       {newParam.type === 'Numeric' && (
                         <div className="space-y-4 bg-slate-50 p-4 border rounded-xl animate-in fade-in">
                           <div className="space-y-2">
@@ -1064,9 +1169,13 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell><Badge variant="secondary" className={p.ui_input_type === 'Upload Image' ? 'bg-indigo-50 text-indigo-700' : ''}>{p.ui_input_type}</Badge></TableCell>
                         <TableCell className="text-muted-foreground text-xs">{p.ui_input_type === 'Dropdown Choice' ? JSON.stringify(p.options_data) : '—'}</TableCell>
                         <TableCell className="text-right pr-6">
-                          {p.ui_input_type === 'Numeric' && (
-                            <Button onClick={() => openUomMapping(p)} variant="outline" size="sm" className="text-primary text-xs h-7">Map UOMs</Button>
-                          )}
+                          <div className="flex justify-end items-center gap-1">
+                            {p.ui_input_type === 'Numeric' && (
+                              <Button onClick={() => openUomMapping(p)} variant="outline" size="sm" className="text-primary text-xs h-7 mr-2">Map UOMs</Button>
+                            )}
+                            <Button variant="ghost" size="icon" onClick={() => openEditParam(p)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_parameters', p.id, p.parameter_label)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1075,6 +1184,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               </CardContent>
             </Card>
           </TabsContent>
+
           {/* ==================== UOM TAB ==================== */}
           <TabsContent value="uom">
             <Card>
@@ -1083,7 +1193,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                 <Dialog open={isUomOpen} onOpenChange={setIsUomOpen}>
                   <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add UOM</Button></DialogTrigger>
                   <DialogContent>
-                    <DialogHeader><DialogTitle>Add New UOM</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{newUom.id ? 'Edit UOM' : 'Add New UOM'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
                       <div className="space-y-2"><Label>UOM Name *</Label><Input placeholder="e.g. Centimeters" value={newUom.name} onChange={e => setNewUom({...newUom, name: e.target.value})} /></div>
                       <div className="space-y-2"><Label>Symbol *</Label><Input placeholder="e.g. cm" value={newUom.symbol} onChange={e => setNewUom({...newUom, symbol: e.target.value})} /></div>
@@ -1094,16 +1204,32 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
-                  <TableHeader><TableRow><TableHead className="pl-6">UOM Name</TableHead><TableHead>Symbol</TableHead></TableRow></TableHeader>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-6">UOM Name</TableHead>
+                      <TableHead>Symbol</TableHead>
+                      <TableHead className="text-right pr-6">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
-                    {uoms.length === 0 && <TableRow><TableCell colSpan={2} className="text-center py-8">No UOMs defined yet.</TableCell></TableRow>}
-                    {uoms.map(u => (<TableRow key={u.id}><TableCell className="font-medium pl-6">{u.uom_name}</TableCell><TableCell><Badge variant="outline" className="font-mono font-bold bg-slate-50">{u.uom_symbol}</Badge></TableCell></TableRow>))}
+                    {uoms.length === 0 && <TableRow><TableCell colSpan={3} className="text-center py-8">No UOMs defined yet.</TableCell></TableRow>}
+                    {uoms.map(u => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium pl-6">{u.uom_name}</TableCell>
+                        <TableCell><Badge variant="outline" className="font-mono font-bold bg-slate-50">{u.uom_symbol}</Badge></TableCell>
+                        <TableCell className="text-right pr-6">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="icon" onClick={() => openEditUom(u)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_uom', u.id, u.uom_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </CardContent>
             </Card>
           </TabsContent>
-
           {/* ==================== SPREADSHEET SOP BUILDER TAB ==================== */}
           <TabsContent value="layout">
             <div className="grid grid-cols-1 gap-6">
