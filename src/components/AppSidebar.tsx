@@ -15,7 +15,11 @@ import {
   CalendarDays,
   Clock ,
   Receipt,
+<<<<<<< Updated upstream
   ShieldCheck
+=======
+  Store
+>>>>>>> Stashed changes
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -42,6 +46,7 @@ const navItems = [
   { to: '/shifts', label: 'Shifts', icon: CalendarDays, module: 'shifts' },
   { to: '/farm-diary-masters', label: 'Farm Diary Masters', icon: FileText, module: 'farm_diary_masters' },
   { to: '/fspp-approvals', label: 'FSPP Approvals', icon: FileText, module: 'fspp_approvals' },
+  { to: '/retail', label: 'Retail & Inventory', icon: Store, module: 'retail' },
   
   
 ];
