@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import LoginPage from './LoginPage';
+import RolesPage from './RolesPage';
 import Dashboard from './Dashboard';
 import DealersPage from './DealersPage';
 import FarmersPage from './FarmersPage';
@@ -58,6 +59,7 @@ const Index = () => {
 <Route path="/expenses" element={guard(<ExpensesPage onLogout={logout} />)} />
       <Route path="/farm-diary-masters" element={guard(<FarmDiaryMasters onLogout={logout} />)} />
       <Route path="/fspp-approvals" element={guard(<FsppApprovals onLogout={logout} />)} />
+      <Route path="/roles" element={guard(<RolesPage onLogout={logout} />)} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>

@@ -1,51 +1,70 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Database } from '@/integrations/supabase/types';
 
-type Permission = Database['public']['Tables']['user_permissions']['Row'];
+type Permission = {
+  module_name: string;
+  can_view: boolean | null;
+  can_edit: boolean | null;
+};
 
 export const usePermissions = (userId: string | undefined) => {
   const [perms, setPerms] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false); // Track if user is Admin
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchPerms = async () => {
-      // 1. Check if the user is a TH (Admin)
+      // 1. Fetch user profile and JOIN the new roles table
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select(`
+          role, 
+          role_id,
+          roles (name)
+        `)
         .eq('id', userId)
         .single();
 
-      if (profile?.role === 'TH') {
+      // 2. GOD MODE: If they are a 'TH' or assigned the 'Super Admin' role
+      if (profile?.role === 'TH' || (profile?.roles as any)?.name === 'Super Admin') {
         setIsAdmin(true);
         setLoading(false);
-        return; // Admins don't need user_permissions entries!
+        return; 
       }
 
-      // 2. If they are a CO, fetch their specific permissions
-      const { data } = await supabase
-        .from('user_permissions')
-        .select('*')
-        .eq('user_id', userId);
-      
-      if (data) setPerms(data);
+      // 3. PURE RBAC: Fetch permissions tied to their role_id
+      if (profile?.role_id) {
+        const { data } = await supabase
+          .from('role_permissions')
+          .select('module_name, can_view, can_edit')
+          .eq('role_id', profile.role_id);
+        
+        if (data) {
+          setPerms(data);
+        }
+      }
+
       setLoading(false);
     };
 
     fetchPerms();
   }, [userId]);
 
-  // Helper to get permission for a specific module
   const getModulePerm = (moduleName: string) => {
-    // 🚀 If Admin, ALWAYS return true!
+    // Admins always bypass checks
     if (isAdmin) return { can_view: true, can_edit: true };
     
-    // Otherwise, check the specific permissions table
-    return perms.find(p => p.module_name === moduleName) || { can_view: false, can_edit: false };
+    // Normal users check their role's module array
+    const p = perms.find(p => p.module_name === moduleName);
+    return { 
+      can_view: !!p?.can_view, 
+      can_edit: !!p?.can_edit 
+    };
   };
 
   return { permissions: perms, loading, getModulePerm };

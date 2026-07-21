@@ -59,7 +59,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
 
         {/* KPI Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          {role === 'CO' ? (
+          {role !== 'Super Admin' ? (
             <>
               <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
               <KpiCard title="Pending Farmers" value={c.farmersPending} icon={Clock} description="Draft farmers" accent="muted" />
@@ -76,13 +76,11 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
           )}
         </div>
 
-        {/* 🚀 ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS (TH) */}
-        {role === 'TH' && (
-          <>
-            <div className="border-t pt-8">
-              <AdminUserManagement />
-            </div>
-          </>
+        {/* ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS */}
+        {role === 'Super Admin' && (
+          <div className="border-t pt-8">
+            <AdminUserManagement />
+          </div>
         )}
       </div>
     </AppLayout>

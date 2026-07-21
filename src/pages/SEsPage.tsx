@@ -11,6 +11,13 @@ import { Plus, Loader2, Shield } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import SETable, { SERow } from '@/components/SETable';
 import SEDetailSheet from '@/components/SEDetailSheet';
 
@@ -31,12 +38,31 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
   const [password, setPassword] = useState('');
 
   const [selected, setSelected] = useState<SERow | null>(null);
-  const { toast } = useToast();
+  // 🚀 NEW: Dynamic Roles State
+  const [mobileRoles, setMobileRoles] = useState<any[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
 
-  // Fetch dynamic user details and module permissions
   const { session, loading: authLoading } = useAuth();
   const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id || '');
   const seAccess = getModulePerm('sales_executives'); 
+
+
+  // 🚀 NEW: Fetch Roles on Mount
+  useEffect(() => {
+    const fetchMobileRoles = async () => {
+      const { data } = await supabase
+        .from('roles')
+        .select('*')
+        .in('platform', ['Mobile', 'Both'])
+        .order('name');
+      if (data) setMobileRoles(data);
+    };
+    if (seAccess.can_edit) fetchMobileRoles();
+  }, [seAccess.can_edit]);
+  const { toast } = useToast();
+
+  // Fetch dynamic user details and module permissions
+ 
 
   const load = async () => {
     setLoading(true);
@@ -111,18 +137,24 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
         mobile: mobile.trim(),
         email: email.trim(),
         password: password,
-        role: 'SE'
+        role: 'SE' // Keep legacy role for backward compatibility
       },
-      headers: {
-        Authorization: `Bearer ${session?.access_token}`
-      }
+      headers: { Authorization: `Bearer ${session?.access_token}` }
     });
-    
+
     setSaving(false);
-    
+
     if (error || data?.error) {
       toast({ title: 'Could not create SE', description: error?.message || data?.error, variant: 'destructive' });
       return;
+    }
+
+    // 🚀 NEW: Immediately link the dynamic role_id to the created profile
+    if (selectedRoleId) {
+      await supabase
+        .from('profiles')
+        .update({ role_id: selectedRoleId })
+        .eq('mobile', mobile.trim());
     }
 
     toast({ title: 'Sales Executive created', description: 'They can now log into the mobile app.' });
@@ -204,6 +236,20 @@ const SEsPage = ({ onLogout }: SEsPageProps) => {
                 <div className="space-y-2">
                   <Label htmlFor="se-email">Email Address</Label>
                   <Input id="se-email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="se-role">Assigned Mobile Role *</Label>
+                  <Select value={selectedRoleId} onValueChange={setSelectedRoleId} required>
+                    <SelectTrigger id="se-role">
+                      <SelectValue placeholder="Select a role..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mobileRoles.map(r => (
+                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">

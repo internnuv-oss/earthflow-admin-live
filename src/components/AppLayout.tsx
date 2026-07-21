@@ -14,7 +14,7 @@ interface AppLayoutProps {
 const AppLayout = ({ children, onLogout }: AppLayoutProps) => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { role, loading } = useAuth();
+  const { role, platform, loading } = useAuth();
 
   if (loading) return null;
 
@@ -23,12 +23,12 @@ const AppLayout = ({ children, onLogout }: AppLayoutProps) => {
     navigate('/');
   };
 
-  if (role === 'SE') {
+  if (platform === 'Mobile' || role === 'SE') {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-center p-4">
         <h2 className="text-2xl font-bold text-red-600 mb-2">Mobile App Only</h2>
         <p className="text-muted-foreground mb-6">
-          Sales Executives must use the Earthflow Mobile Application. Web access is restricted.
+          Your assigned role ({role}) is restricted to the Earthflow Mobile Application. Web access is denied.
         </p>
         <Button onClick={onLogout}>Sign Out</Button>
       </div>

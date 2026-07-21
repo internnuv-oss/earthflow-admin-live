@@ -14,7 +14,8 @@ import {
   FileText, 
   CalendarDays,
   Clock ,
-  Receipt// 🚀 FIXED: Imported Clock here!
+  Receipt,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -27,6 +28,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true, module: 'dashboard' },
+  { to: '/roles', label: 'Roles & Access', icon: ShieldCheck, module: 'role_management' },
   { to: '/sales-executives', label: 'Sales Executives', icon: UserCog, module: 'sales_executives' },
   { to: '/distributors', label: 'Distributors', icon: Truck, module: 'distributors' },
   { to: '/dealers', label: 'Dealers', icon: Users, module: 'dealers' },
@@ -108,7 +110,7 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
         <div className="min-w-0">
           <h1 className="text-sm font-bold leading-tight truncate">Field Commander Admin</h1>
           <p className="text-xs text-muted-foreground truncate uppercase">
-            {role === 'CO' ? 'Coordinator' : 'Territory Head'}
+            {role || 'Staff'}
           </p>
         </div>
       </div>
@@ -119,8 +121,8 @@ const AppSidebar = ({ onNavigate }: AppSidebarProps) => {
           {filteredNavItems.map(renderLink)}
         </nav>
 
-        {/* Hide Settings if role is Coordinator */}
-        {role !== 'CO' && (
+        {/* Only show global settings to the Super Admin */}
+        {role === 'Super Admin' && (
           <div className="pt-3 border-t border-border">
             <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
               <CollapsibleTrigger
