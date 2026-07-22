@@ -46,9 +46,17 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
   }
   
   const distanceUsed = odoDistance > 0 ? odoDistance : (shift?.total_distance || 0);
-  const taAmount = distanceUsed * 4;
-  const daAmount = distanceUsed > 60 ? 150 : 0;
 
+  // 🚀 DYNAMIC RATE CALCULATION: 
+  // We check the original DB expense amount to determine if the ₹8/km rate was applied.
+  const daAmount = distanceUsed > 60 ? 150 : 0;
+  
+  // If the total expense in the DB minus the DA equals (Distance * 8), they used a four-wheeler.
+  // Otherwise, default to ₹4/km.
+  const isFourWheeler = (Number(expense.amount) - daAmount) === (distanceUsed * 8);
+  const ratePerKm = isFourWheeler ? 8 : 4;
+  
+  const taAmount = distanceUsed * ratePerKm;
   const liveTotalCalculated = (approveTA ? taAmount : 0) + (approveDA ? daAmount : 0);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -122,7 +130,6 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
             <p className="text-sm font-semibold text-primary uppercase">{expense.category}</p>
             <h2 className="text-4xl font-bold text-foreground mt-1">
-              {/* 🚀 Changed to use isActionable */}
               ₹{Number(isActionable && expense.category === 'TA/DA' ? liveTotalCalculated : expense.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </h2>
           </div>
@@ -155,10 +162,11 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                     <Checkbox 
                       id="approve-ta" 
                       checked={approveTA} 
-                      disabled={!canEdit || !isActionable} // 🚀 Changed to use isActionable
+                      disabled={!canEdit || !isActionable}
                       onCheckedChange={(v) => setApproveTA(!!v)}
                     />
-                    <Label htmlFor="approve-ta" className="text-muted-foreground cursor-pointer text-sm">Travel Allowance (₹4/km)</Label>
+                    {/* 🚀 Dynamic Label based on the deduced rate */}
+                    <Label htmlFor="approve-ta" className="text-muted-foreground cursor-pointer text-sm">Travel Allowance (₹{ratePerKm}/km)</Label>
                   </div>
                   <span className={`font-semibold ${approveTA ? '' : 'line-through text-muted-foreground/60'}`}>₹{taAmount.toFixed(2)}</span>
                 </div>
@@ -169,7 +177,7 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                       <Checkbox 
                         id="approve-da" 
                         checked={approveDA} 
-                        disabled={!canEdit || !isActionable} // 🚀 Changed to use isActionable
+                        disabled={!canEdit || !isActionable} 
                         onCheckedChange={(v) => setApproveDA(!!v)}
                       />
                       <Label htmlFor="approve-da" className="text-muted-foreground cursor-pointer text-sm">Daily Allowance (&gt; 60km)</Label>
@@ -179,7 +187,6 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                 )}
 
                 <div className="flex justify-between border-t pt-2 mt-2 font-bold text-base">
-                  {/* 🚀 Changed to use isActionable */}
                   <span>{isActionable ? 'Adjusted Total' : 'Total Calculated'}</span>
                   <span>₹{liveTotalCalculated.toFixed(2)}</span>
                 </div>
@@ -227,14 +234,12 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           </div>
         </div>
 
-        {/* 🚀 Changed the condition here to include 'Queried' statuses */}
         {canEdit && isActionable && (
           <SheetFooter className="px-6 py-4 border-t bg-muted/10 grid grid-cols-3 gap-3">
             <Button variant="outline" className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200" disabled={updating} onClick={() => handleStatusChange('Rejected')}>
               <XCircle className="h-4 w-4 mr-2" /> Reject
             </Button>
             
-            {/* If it's already queried, we can let them click Query again to add new notes if you build that later, or just leave it */}
             <Button variant="outline" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" disabled={updating} onClick={() => handleStatusChange('Queried')}>
               <HelpCircle className="h-4 w-4 mr-2" /> Query
             </Button>
