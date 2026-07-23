@@ -46,6 +46,7 @@ interface FpoTableProps {
   onSelect: (r: FpoRow) => void;
   seOptions?: { value: string; label: string }[];
   onFilteredDataChange?: (data: FpoRow[]) => void;
+  canEdit?: boolean;
 }
 
 const FpoTable = ({ rows, onSelect, seOptions = [], onFilteredDataChange }: FpoTableProps) => {

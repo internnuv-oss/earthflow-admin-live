@@ -250,7 +250,8 @@ const DealersPage = ({ onLogout }: Props) => {
             rows={rows} 
             onSelect={setSelected} 
             seOptions={seList} 
-            onFilteredDataChange={setFilteredData} 
+            onFilteredDataChange={setFilteredData}
+            canEdit={dealerAccess.can_edit}
           />
         )}
       </div>
@@ -258,7 +259,8 @@ const DealersPage = ({ onLogout }: Props) => {
         dealer={selected} 
         open={!!selected} 
         onClose={() => setSelected(null)} 
-        onSaved={() => window.location.reload()} 
+        onSaved={() => window.location.reload()}
+        canEdit={dealerAccess.can_edit}
       />
     </AppLayout>
   );

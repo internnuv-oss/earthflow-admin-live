@@ -195,6 +195,7 @@ interface Props {
   open: boolean; 
   onClose: () => void;
   onSaved?: () => void;
+  canEdit?: boolean;
 }
 
 const safeArray = (val: any): string[] => {
@@ -203,7 +204,7 @@ const safeArray = (val: any): string[] => {
   return [];
 };
 
-const DealerDetailSheet = ({ dealer: d, open, onClose, onSaved }: Props) => {
+const DealerDetailSheet = ({ dealer: d, open, onClose, onSaved, canEdit }: Props) => {
   const { toast } = useToast();
   
   // --- EDIT STATE ---
@@ -580,7 +581,7 @@ const DealerDetailSheet = ({ dealer: d, open, onClose, onSaved }: Props) => {
               <Badge>{d?.status || 'DRAFT'}</Badge>
               {!isEditing && d?.category && <Badge variant="secondary">{d.category}</Badge>}
 
-              {!isEditing && (
+              {!isEditing && canEdit && (
                 <Button size="sm" variant="outline" className="h-8 mt-1" onClick={() => setIsEditing(true)}>
                   <Edit className="h-3.5 w-3.5 mr-1.5" /> Edit Profile
                 </Button>

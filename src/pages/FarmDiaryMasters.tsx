@@ -734,18 +734,20 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                             <Button variant="outline" size="sm" className="h-8 text-xs bg-white" onClick={() => handleViewGroupSop(group)}>
                               <Eye className="h-3 w-3 mr-1.5" /> View SOP
                             </Button>
-                            <Button variant="default" size="sm" className="h-8 text-xs shadow-sm" onClick={() => handleEditGroupSop(group)}>
+                            {access.can_edit && <Button variant="default" size="sm" className="h-8 text-xs shadow-sm" onClick={() => handleEditGroupSop(group)}>
                               <Map className="h-3 w-3 mr-1.5" /> Edit SOP
-                            </Button>
+                            </Button>}
                           </div>
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => openEditGroup(group)}>
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => deleteGroup(group.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          {access.can_edit && (
+                            <div className="flex gap-2">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => openEditGroup(group)}>
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => deleteGroup(group.id)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
                         </CardFooter>
                       </Card>
                     ))}
@@ -799,7 +801,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
                 <div><CardTitle>Master of Crops</CardTitle><CardDescription>Global registry of supported crops and their categories.</CardDescription></div>
                 <Dialog open={isCropOpen} onOpenChange={(o) => { setIsCropOpen(o); if(!o) setIsAddingNewCategory(false); }}>
-                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Crop</Button></DialogTrigger>
+                {access.can_edit && <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Crop</Button></DialogTrigger>}
                   <DialogContent>
                     <DialogHeader><DialogTitle>{newCrop.id ? 'Edit Crop' : 'Add New Crop'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
@@ -842,8 +844,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-2">
                             <Button variant="outline" size="icon" onClick={() => handleViewCropSop(c)} className="h-8 w-8 text-primary border-primary/20 hover:bg-primary/10" title="View Format"><Eye className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => openEditCrop(c)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_crops', c.id, c.crop_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                            {access.can_edit && (
+                              <>
+                                <Button variant="ghost" size="icon" onClick={() => openEditCrop(c)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_crops', c.id, c.crop_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -860,7 +866,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
                 <div><CardTitle>Master of Crop Stages</CardTitle><CardDescription>Developmental milestones for crops.</CardDescription></div>
                 <Dialog open={isStageOpen} onOpenChange={setIsStageOpen}>
-                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Stage</Button></DialogTrigger>
+                {access.can_edit && <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Stage</Button></DialogTrigger>}
                   <DialogContent>
                     <DialogHeader><DialogTitle>{newStage.id ? 'Edit Stage' : 'Add New Stage'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
@@ -887,8 +893,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell><Badge variant="secondary" className="font-mono">{s.stage_code}</Badge></TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => openEditStage(s)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_crop_stages', s.id, s.stage_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          {access.can_edit && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => openEditStage(s)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_crop_stages', s.id, s.stage_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                            </>
+                          )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -911,9 +921,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                   if (!open) setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
                   setIsGlsOpen(open);
                 }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="gap-1.5 shadow-sm"><Plus className="h-4 w-4" /> Add Product</Button>
-                  </DialogTrigger>
+                  {access.can_edit && <DialogTrigger asChild><Button size="sm" className="gap-1.5 shadow-sm"><Plus className="h-4 w-4" /> Add Product</Button></DialogTrigger>}
                   <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
                     <DialogHeader className="px-6 py-4 border-b bg-muted/30"><DialogTitle>{newGls.id ? 'Edit Product Profile' : 'Add New Product Profile'}</DialogTitle></DialogHeader>
                     <div className="px-6 py-4 max-h-[65vh] overflow-y-auto space-y-5 custom-scrollbar">
@@ -1014,8 +1022,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                           <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-slate-600" title={g.impact || ''}>{g.impact || '—'}</div></TableCell>
                           <TableCell className="align-top pt-4 text-right pr-6">
                             <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => openEditGls(g)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_gls_products', g.id, g.product_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                            {access.can_edit && (
+                              <>
+                                <Button variant="ghost" size="icon" onClick={() => openEditGls(g)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_gls_products', g.id, g.product_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                              </>
+                            )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1039,7 +1051,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                   }
                   setIsParamOpen(open);
                 }}>
-                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Parameter</Button></DialogTrigger>
+                  {access.can_edit && <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add Parameter</Button></DialogTrigger>}
                   <DialogContent className="sm:max-w-[450px]">
                     <DialogHeader><DialogTitle>{newParam.id ? 'Edit Parameter' : 'Add New Parameter'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -1156,11 +1168,15 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell className="text-muted-foreground text-xs">{p.ui_input_type === 'Dropdown Choice' ? JSON.stringify(p.options_data) : '—'}</TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end items-center gap-1">
-                            {p.ui_input_type === 'Numeric' && (
-                              <Button onClick={() => openUomMapping(p)} variant="outline" size="sm" className="text-primary text-xs h-7 mr-2">Map UOMs</Button>
-                            )}
-                            <Button variant="ghost" size="icon" onClick={() => openEditParam(p)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_parameters', p.id, p.parameter_label)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          {p.ui_input_type === 'Numeric' && access.can_edit && (
+                            <Button onClick={() => openUomMapping(p)} variant="outline" size="sm" className="text-primary text-xs h-7">Map UOMs</Button>
+                          )}
+                          {access.can_edit && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => openEditParam(p)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_parameters', p.id, p.parameter_label)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                            </>
+                          )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1177,7 +1193,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
               <CardHeader className="flex flex-row items-center justify-between bg-muted/20 border-b pb-4">
                 <div><CardTitle>Units of Measurement (UOM)</CardTitle><CardDescription>Global registry of measurement units.</CardDescription></div>
                 <Dialog open={isUomOpen} onOpenChange={setIsUomOpen}>
-                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add UOM</Button></DialogTrigger>
+                {access.can_edit && <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-2"/> Add UOM</Button></DialogTrigger>}
                   <DialogContent>
                     <DialogHeader><DialogTitle>{newUom.id ? 'Edit UOM' : 'Add New UOM'}</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
@@ -1205,8 +1221,12 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell><Badge variant="outline" className="font-mono font-bold bg-slate-50">{u.uom_symbol}</Badge></TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => openEditUom(u)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_uom', u.id, u.uom_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                          {access.can_edit && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => openEditUom(u)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_uom', u.id, u.uom_name)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                            </>
+                          )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1230,7 +1250,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                     </h3>
                   </div>
                   <div className="space-y-4 flex-1">
-                    <Select value={layoutCategory} onValueChange={(v) => { setLayoutCategory(v === 'ALL' ? '' : v); setLayoutCrops([]); }}>
+                  <Select disabled={!access.can_edit} value={layoutCategory} onValueChange={(v) => { setLayoutCategory(v === 'ALL' ? '' : v); setLayoutCrops([]); }}>
                       <SelectTrigger className="bg-white"><SelectValue placeholder="Filter by Category..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ALL">All Categories</SelectItem>
@@ -1240,14 +1260,14 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                     <div className="bg-white border rounded-md p-3 h-[150px] overflow-y-auto grid grid-cols-2 gap-2 shadow-inner">
                       {filteredCropsForLayout.map(c => (
                         <div key={c.id} className="flex items-center space-x-2 hover:bg-muted/50 p-1 rounded">
-                          <Checkbox id={`crop-${c.id}`} checked={layoutCrops.includes(c.id)} onCheckedChange={() => toggleLayoutCrop(c.id)} />
+                          <Checkbox disabled={!access.can_edit} id={`crop-${c.id}`} checked={layoutCrops.includes(c.id)} onCheckedChange={() => toggleLayoutCrop(c.id)} />
                           <Label htmlFor={`crop-${c.id}`} className="text-xs font-medium cursor-pointer truncate">{c.crop_name}</Label>
                         </div>
                       ))}
                     </div>
                     <div className="flex justify-between items-center text-xs text-muted-foreground">
                       <span>{layoutCrops.length} selected</span>
-                      <Button variant="ghost" size="sm" onClick={selectAllFilteredCrops} className="h-6 text-[10px]">Select All</Button>
+                      {access.can_edit && <Button variant="ghost" size="sm" onClick={selectAllFilteredCrops} className="h-6 text-[10px]">Select All</Button>}
                     </div>
                   </div>
                 </div>
@@ -1262,7 +1282,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                       <Label className="text-[10px] font-bold text-muted-foreground uppercase">Available Stages</Label>
                       {stages.map(s => (
                         <div key={s.id} className="flex items-center space-x-2 p-1 rounded">
-                          <Checkbox id={`stage-${s.id}`} checked={layoutStages.includes(s.id)} onCheckedChange={() => toggleLayoutStage(s.id)} />
+                          <Checkbox disabled={!access.can_edit} id={`stage-${s.id}`} checked={layoutStages.includes(s.id)} onCheckedChange={() => toggleLayoutStage(s.id)} />
                           <Label htmlFor={`stage-${s.id}`} className="text-xs font-medium cursor-pointer truncate">{s.stage_name}</Label>
                         </div>
                       ))}
@@ -1285,7 +1305,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                       })}
                     </div>
                   </div>
-                  <Button onClick={saveExecutionOrder} variant="outline" size="sm" className="mt-4 w-full bg-white">Lock Global Stage Order</Button>
+                  {access.can_edit && <Button onClick={saveExecutionOrder} variant="outline" size="sm" className="mt-4 w-full bg-white">Lock Global Stage Order</Button>}
                 </div>
               </div>
 
@@ -1318,10 +1338,10 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                             <CardContent className="p-4 space-y-6">
                               
                               {/* SPREADSHEET TABLE */}
-                              <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
+                              <div className={`bg-white border rounded-lg shadow-sm overflow-hidden ${!access.can_edit ? 'pointer-events-none opacity-90' : ''}`}>
                                 <div className="bg-muted/30 px-4 py-3 border-b flex justify-between items-center">
                                   <h4 className="text-sm font-bold flex items-center gap-2"><FlaskConical className="h-4 w-4 text-primary" /> Application Schedule</h4>
-                                  <Button size="sm" onClick={addApplicationRow} className="h-7 text-xs gap-1"><Plus className="h-3 w-3"/> Add Application Row</Button>
+                                  {access.can_edit && <Button size="sm" onClick={addApplicationRow} className="h-7 text-xs gap-1"><Plus className="h-3 w-3"/> Add Application Row</Button>}
                                 </div>
                                 <div className="overflow-x-auto">
                                   <Table className="min-w-[1400px]">
@@ -1401,7 +1421,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                                             <TableCell className="p-1.5"><Input placeholder="Chemicals..." value={app.chemical_name} onChange={e => updateAppRow(index, 'chemical_name', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
                                             <TableCell className="p-1.5"><Input placeholder="e.g. 1 Bag" value={app.chemical_dosage} onChange={e => updateAppRow(index, 'chemical_dosage', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
                                             <TableCell className="p-1.5 text-center">
-                                              <Button variant="ghost" size="icon" onClick={() => removeAppRow(index)} className="h-7 w-7 text-red-500 hover:bg-red-50"><Trash2 className="h-3 w-3" /></Button>
+                                              {access.can_edit && <Button variant="ghost" size="icon" onClick={() => removeAppRow(index)} className="h-7 w-7 text-red-500 hover:bg-red-50"><Trash2 className="h-3 w-3" /></Button>}
                                             </TableCell>
                                           </TableRow>
                                         ))
@@ -1413,7 +1433,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {/* PART B: RECOMMENDATIONS */}
-                                <Card className="border-border shadow-sm">
+                                <Card className={`border-border shadow-sm ${!access.can_edit ? 'pointer-events-none opacity-90' : ''}`}>
                                   <CardHeader className="bg-slate-50 border-b py-3 px-4">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2">General Stage Recommendation</CardTitle>
                                   </CardHeader>
@@ -1428,7 +1448,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                                 </Card>
 
                                 {/* PART C: FIELD PARAMETERS */}
-                                <Card className="border-border shadow-sm">
+                                <Card className={`border-border shadow-sm ${!access.can_edit ? 'pointer-events-none opacity-90' : ''}`}>
                                   <CardHeader className="bg-slate-50 border-b py-3 px-4 flex flex-row items-center justify-between">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2">
                                       <Ruler className="h-4 w-4 text-primary" /> Parameters to Measure
@@ -1469,12 +1489,14 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                                 </Card>
                               </div>
 
-                              <div className="flex justify-end pt-4 border-t">
-                                <Button onClick={saveActiveStageSop} disabled={savingSop} className="px-8 shadow-md text-sm gap-2 h-10">
-                                  {savingSop ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                  Save {stage?.stage_name} Data For {layoutCrops.length} Crop(s)
-                                </Button>
-                              </div>
+                              {access.can_edit && (
+                                <div className="flex justify-end pt-4 border-t">
+                                  <Button onClick={saveActiveStageSop} disabled={savingSop} className="px-8 shadow-md text-sm gap-2 h-10">
+                                    {savingSop ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    Save {stage?.stage_name} Data For {layoutCrops.length} Crop(s)
+                                  </Button>
+                                </div>
+                              )}
                             </CardContent>
                           </Card>
                         </TabsContent>

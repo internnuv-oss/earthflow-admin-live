@@ -58,6 +58,7 @@ interface DealerTableProps {
   onSelect: (r: DealerRow) => void;
   seOptions?: { value: string; label: string }[];
   onFilteredDataChange?: (data: DealerRow[]) => void;
+  canEdit?: boolean;
 }
 
 const DealerTable = ({ rows, onSelect, seOptions = [] }: DealerTableProps) => {

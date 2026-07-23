@@ -79,24 +79,22 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
           </p>
         </div>
 
-        {/* KPI Cards Grid */}
+        {/* KPI Cards Grid - Visible to everyone with Dashboard View Access */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          {role !== 'Super Admin' ? (
-            <>
-              <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
-              <KpiCard title="Pending Farmers" value={c.farmersPending} icon={Clock} description="Draft farmers" accent="muted" />
-            </>
-          ) : (
-            <>
-              <KpiCard title="Sales Executives" value={c.ses} icon={UserCog} description="Active SEs in territory" to="/sales-executives" />
-              <KpiCard title="SE Profiles Complete" value={c.sesComplete} icon={CheckCircle2} description="Finished mobile onboarding" />
-              <KpiCard title="Distributors" value={c.distributors} icon={Truck} description="View directory" to="/distributors" />
-              <KpiCard title="Dealers" value={c.dealers} icon={Users} description="View directory" to="/dealers" />
-              <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
-              <KpiCard title="Pending Approvals" value={totalPending} icon={Clock} description="Drafts across all directories" accent="muted" />
-            </>
-          )}
+          <KpiCard title="Sales Executives" value={c.ses} icon={UserCog} description="Active SEs in territory" to="/sales-executives" />
+          <KpiCard title="SE Profiles Complete" value={c.sesComplete} icon={CheckCircle2} description="Finished mobile onboarding" />
+          <KpiCard title="Distributors" value={c.distributors} icon={Truck} description="View directory" to="/distributors" />
+          <KpiCard title="Dealers" value={c.dealers} icon={Users} description="View directory" to="/dealers" />
+          <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
+          <KpiCard title="Pending Approvals" value={totalPending} icon={Clock} description="Drafts across all directories" accent="muted" />
         </div>
+
+        {/* ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS (TH) */}
+        {role === 'Super Admin' && (
+          <div className="border-t pt-8">
+            <AdminUserManagement />
+          </div>
+        )}
 
         {/* ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS */}
         {role === 'Super Admin' && (

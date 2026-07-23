@@ -400,18 +400,18 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
                                   <Eye className="h-4 w-4 text-muted-foreground" />
                                 </Button>
                                 
-                                {activeTab === 'PENDING' && (
+                                {activeTab === 'PENDING' && access.can_edit && (
                                   <>
-                                    <Button 
-                                      size="sm" 
+                                    <Button
+                                      size="sm"
                                       className="bg-green-600 hover:bg-green-700 text-white h-8"
                                       onClick={() => handleUpdateStatus(card.id, 'APPROVED')}
                                     >
                                       Approve
                                     </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
                                       className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 h-8"
                                       onClick={() => handleUpdateStatus(card.id, 'REJECTED')}
                                     >

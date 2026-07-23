@@ -225,10 +225,10 @@ const FposPage = ({ onLogout }: Props) => {
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : (
-          <FpoTable rows={rows} onSelect={setSelected} seOptions={seList} onFilteredDataChange={setFilteredData} />
+          <FpoTable rows={rows} onSelect={setSelected} seOptions={seList} onFilteredDataChange={setFilteredData} canEdit={fpoAccess.can_edit} />
         )}
       </div>
-      <FpoDetailSheet fpo={selected} open={!!selected} onClose={() => setSelected(null)} onSaved={() => window.location.reload()} />
+      <FpoDetailSheet fpo={selected} open={!!selected} onClose={() => setSelected(null)} onSaved={() => window.location.reload()} canEdit={fpoAccess.can_edit} />
     </AppLayout>
   );
 };

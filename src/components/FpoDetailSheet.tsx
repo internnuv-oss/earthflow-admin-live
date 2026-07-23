@@ -17,9 +17,10 @@ interface Props {
   open: boolean; 
   onClose: () => void;
   onSaved?: () => void;
+  canEdit?: boolean;
 }
 
-const FpoDetailSheet = ({ fpo: f, open, onClose, onSaved }: Props) => {
+const FpoDetailSheet = ({ fpo: f, open, onClose, onSaved, canEdit }: Props) => {
   const { toast } = useToast();
   
   const [isEditing, setIsEditing] = useState(false);
@@ -131,7 +132,7 @@ const FpoDetailSheet = ({ fpo: f, open, onClose, onSaved }: Props) => {
 
   return (
     <Sheet open={open} onOpenChange={o => { if (!o) { setIsEditing(false); onClose(); } }}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-4xl p-0 flex flex-col bg-slate-50/50">
+      <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-4xl p-0 flex flex-col bg-white">
         <SheetHeader className="px-6 py-5 border-b border-border space-y-4 bg-background">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -154,7 +155,7 @@ const FpoDetailSheet = ({ fpo: f, open, onClose, onSaved }: Props) => {
 
             <div className="flex flex-col items-end gap-2 shrink-0">
               <Badge>{f?.status || 'DRAFT'}</Badge>
-              {!isEditing && (
+              {!isEditing && canEdit && (
                 <Button size="sm" variant="outline" className="h-8" onClick={() => setIsEditing(true)}>
                   <Edit className="h-3.5 w-3.5 mr-1.5" /> Edit Profile
                 </Button>
