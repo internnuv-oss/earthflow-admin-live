@@ -13,6 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
+import { Shield } from 'lucide-react';
 import { Loader2, Plus, Settings, Ruler, Leaf, ListTree, AlertCircle, Trash2, Map, FlaskConical, Save, CheckSquare, ChevronUp, ChevronDown, Eye, Layers, Edit2, Image as ImageIcon } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
@@ -20,6 +23,11 @@ const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET |
 
 export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
+
+  // 🚀 NEW: Auth & Permissions Hooks
+  const { session, loading: authLoading } = useAuth();
+  const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id);
+  const access = getModulePerm('farm_diary_masters');
   const [activeTab, setActiveTab] = useState('crops'); 
   const [loading, setLoading] = useState(false);
   
@@ -646,6 +654,23 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     }
     setSavingSop(false);
   };
+
+  // 🚀 NEW: Layer 2 RBAC Guard (Add this right before the return statement)
+  if (authLoading || permLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (!access.can_view) {
+    return (
+      <AppLayout onLogout={onLogout}>
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+          <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">You do not have permission to view Farm Diary Masters.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout onLogout={onLogout}>

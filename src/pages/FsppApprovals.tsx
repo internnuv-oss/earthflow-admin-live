@@ -10,6 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
+import { Shield } from 'lucide-react';
 import { Loader2, CheckCircle, XCircle, Clock, ShieldCheck, Eye, Calendar as CalendarIcon, Search, Filter, RotateCcw } from 'lucide-react';
 
 // 🚀 NEW IMPORTS FOR THE DATE RANGE PICKER
@@ -23,6 +26,12 @@ import FarmerDetailSheet from '@/components/FarmerDetailSheet';
 
 export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
+
+  // 🚀 NEW: Auth & Permissions Hooks
+  const { session, loading: authLoading } = useAuth();
+  const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id);
+  const access = getModulePerm('fspp_approvals');
+
   const [loading, setLoading] = useState(true);
   const [farmCards, setFarmCards] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('PENDING');
@@ -149,6 +158,23 @@ export default function FsppApprovals({ onLogout }: { onLogout: () => void }) {
 
     return matchesSearch && matchesSE && matchesCat && matchesLand;
   });
+
+  // 🚀 NEW: Layer 2 RBAC Guard (Add this right before `const totalPages = ...`)
+  if (authLoading || permLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (!access.can_view) {
+    return (
+      <AppLayout onLogout={onLogout}>
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+          <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">You do not have permission to view FSPP Approvals.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   const tabFilteredCards = baseFilteredCards.filter(c => c.fspp_approval_status === activeTab);
   const totalPages = Math.ceil(tabFilteredCards.length / ITEMS_PER_PAGE) || 1;

@@ -25,6 +25,7 @@ const WEB_MODULES = [
   { key: 'shifts', label: 'Shift Management' },
   { key: 'farm_diary_masters', label: 'Farm Diary & SOPs' },
   { key: 'fspp_approvals', label: 'FSPP Approvals' },
+  { key: 'retail', label: 'Retail & Inventory' },
 ];
 
 const MOBILE_MODULES = [

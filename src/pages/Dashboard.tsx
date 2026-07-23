@@ -3,8 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import KpiCard from '@/components/KpiCard';
 import AppLayout from '@/components/AppLayout';
 import AdminUserManagement from '@/components/AdminUserManagement'; // 🚀 IMPORT THE USER MANAGEMENT COMPONENT
-import { Users, Clock, Wheat, Truck, UserCog, CheckCircle2 } from 'lucide-react';
+import { Users, Clock, Wheat, Truck, UserCog, CheckCircle2, Loader2, Shield } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth'; 
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface DashboardProps { onLogout: () => void; }
 
@@ -16,7 +17,11 @@ interface Counts {
 }
 
 const Dashboard = ({ onLogout }: DashboardProps) => {
-  const { role } = useAuth(); 
+  const { session, role, loading: authLoading } = useAuth(); 
+
+  // 🚀 NEW: Fetch Permissions
+  const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id);
+  const dashboardAccess = getModulePerm('dashboard');
   
   const [c, setC] = useState<Counts>({
     ses: 0, sesComplete: 0, distributors: 0, distributorsPending: 0,
@@ -44,6 +49,23 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
       });
     })();
   }, []);
+
+  // 🚀 NEW: Layer 2 RBAC Guard
+  if (authLoading || permLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (!dashboardAccess.can_view) {
+    return (
+      <AppLayout onLogout={onLogout}>
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+          <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">You do not have permission to view the Dashboard Overview.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   const totalPending = (c?.distributorsPending || 0) + (c?.dealersPending || 0) + (c?.farmersPending || 0);
 

@@ -36,7 +36,6 @@ const navItems = [
   { to: '/farmers', label: 'Farmers', icon: Wheat, module: 'farmers' },
   { to: '/fpos', label: 'FPOs', icon: Sprout, module: 'fpos' },
   { to: '/routes', label: 'Territory Routes', icon: MapPin, module: 'routes' },
-  // 🚀 Your perfectly placed Attendance route
   { to: '/attendance', label: 'Attendance', icon: Clock, module: 'attendance' }, 
   { to: '/expenses', label: 'Expenses', icon: Receipt, module: 'expenses' },
   { to: '/locations', label: 'Location Master', icon: Map, module: 'locations' },
@@ -44,8 +43,6 @@ const navItems = [
   { to: '/farm-diary-masters', label: 'Farm Diary Masters', icon: FileText, module: 'farm_diary_masters' },
   { to: '/fspp-approvals', label: 'FSPP Approvals', icon: FileText, module: 'fspp_approvals' },
   { to: '/retail', label: 'Retail & Inventory', icon: Store, module: 'retail' },
-  
-  
 ];
 
 const settingsChildren = [
