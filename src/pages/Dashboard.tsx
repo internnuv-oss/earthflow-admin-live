@@ -95,13 +95,6 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
             <AdminUserManagement />
           </div>
         )}
-
-        {/* ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS */}
-        {role === 'Super Admin' && (
-          <div className="border-t pt-8">
-            <AdminUserManagement />
-          </div>
-        )}
       </div>
     </AppLayout>
   );
