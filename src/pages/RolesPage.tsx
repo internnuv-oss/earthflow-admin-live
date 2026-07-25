@@ -29,13 +29,12 @@ const WEB_MODULES = [
 ];
 
 const MOBILE_MODULES = [
-  { key: 'mobile_attendance', label: 'Punch In / Punch Out' },
-  { key: 'mobile_expense', label: 'Log Expenses' },
-  { key: 'mobile_dealer_onboard', label: 'Dealer Onboarding' },
-  { key: 'mobile_farmer_onboard', label: 'Farmer Onboarding' },
-  { key: 'mobile_distributor_onboard', label: 'Distributor Onboarding' },
-  { key: 'mobile_fpo_onboard', label: 'FPO Onboarding' },
-  { key: 'mobile_farm_card', label: 'Farm Card Generation' },
+  { key: 'mobile_distributor', label: 'Distributor Module' },
+  { key: 'mobile_dealer', label: 'Dealer Module' },
+  { key: 'mobile_farmer', label: 'Farmer Module (Includes Farm Card, Diary, FSPP, etc.)' },
+  { key: 'mobile_fpo', label: 'FPO Module' },
+  { key: 'mobile_travel_activity', label: 'Executive Travel Activity (Attendance, Reports, Expenses)' },
+  { key: 'mobile_retail', label: 'Retail & Inventory' },
 ];
 
 export default function RolesPage({ onLogout }: { onLogout: () => void }) {
