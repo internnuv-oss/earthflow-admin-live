@@ -284,7 +284,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
       while (true) {
         const { data, error } = await supabase
           .from('farm_cards')
-          .select('id, se_id')
+          .select('id, se_id, status')
           .range(from, from + step - 1);
           
         if (error) throw error;
@@ -327,8 +327,13 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         
         const combinedFarmersForSE = [...seFarmers, ...seDrafts];
 
-        // 🚀 NEW: Count the absolute card records belonging to this executive directly from the farm_cards table
-        const actualFarmCardCount = fetchedFarmCards.filter(card => card.se_id === se.id).length;
+        // 🚀 NEW: Calculate detailed metrics directly from the fetched database records
+        const seCards = fetchedFarmCards.filter(card => card.se_id === se.id);
+        const detailedFarmCardMetrics = {
+          total: seCards.length,
+          drafts: seCards.filter(c => c.status === 'DRAFT').length,
+          completed: seCards.filter(c => c.status !== 'DRAFT').length
+        };
 
         const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
         const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
@@ -337,11 +342,11 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
           name: se.name || 'Unknown SE', 
           villageCount: uniqueSeVillages.length, 
           farmers: combinedFarmersForSE,
-          // 🚀 NEW PARAMETER PASSED DIRECTLY:
-          externalFarmCardCount: actualFarmCardCount 
+          externalFarmCardCount: detailedFarmCardMetrics // 🚀 Pass object to the table
         };
       });
 
+      
       setAnalyticsData(seEntities);
     } catch (error: any) {
       toast({ title: 'Analytics Error', description: error.message, variant: 'destructive' });

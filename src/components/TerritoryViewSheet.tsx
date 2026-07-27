@@ -25,20 +25,25 @@ type ViewLevel = 'routes' | 'villages' | 'farmers';
 
 
 
-export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number, externalFarmCardCount?: number }[] }) => {
+export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number, externalFarmCardCount?: { total: number, drafts: number, completed: number } }[] }) => {
   
-  const computeMetrics = (farmers: any[], villageCount: number, externalFarmCardCount?: number) => {
-    // 🚀 STEP 1: Calculate the inline array fallback count if external query data is missing
-    const inlineFarmCardCount = farmers.filter(f => f.has_farm_card === true).length;
+  const computeMetrics = (farmers: any[], villageCount: number, externalFarmCardCount?: { total: number, drafts: number, completed: number }) => {
     
-    // If externalFarmCardCount is passed as a valid number, use it. Otherwise, fall back to the inline count.
-    const resolvedFarmCardCount = typeof externalFarmCardCount === 'number' ? externalFarmCardCount : inlineFarmCardCount;
+    // 🚀 NEW: Format the detailed Farm Card breakdown
+    let farmCardDisplay = '0';
+    if (externalFarmCardCount) {
+      farmCardDisplay = `${externalFarmCardCount.total} (Draft: ${externalFarmCardCount.drafts}, Completed: ${externalFarmCardCount.completed})`;
+    } else {
+      // Fallback if external data is missing
+      const inlineFarmCardCount = farmers?.filter(f => f.has_farm_card === true).length || 0;
+      farmCardDisplay = inlineFarmCardCount > 0 ? `${inlineFarmCardCount} (Draft: 0, Completed: ${inlineFarmCardCount})` : '0';
+    }
 
     if (!farmers || farmers.length === 0) {
       return {
         villageCount, totalFarmers: 0, completed: 0, drafts: 0, 
         fsppCount: '0',
-        farmCardCount: resolvedFarmCardCount, // 🚀 Failsafe fallback injected cleanly on empty slots
+        farmCardCount: farmCardDisplay, // 🚀 Formatted breakdown injected
         avgScore: 0, totalLand: '0', committedLand: '0', avgLand: '0', 
         topCrops: '—', topSoils: '—', primaryStage: '—', lastVisited: '—'
       };
@@ -50,9 +55,8 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     
     const fspp = farmers.filter(f => f.fspp_details && Object.keys(f.fspp_details).length > 0);
     
-    // 🚀 STEP 2: Use the safely resolved metric value here
-    const farmCardCount = resolvedFarmCardCount; 
-
+    // 🚀 FIXED: Assign formatted display directly to the row parameter
+    const farmCardCount = farmCardDisplay;
     const counts: Record<string, number> = {
       'Category A': 0, 'Category B': 0, 'Category C': 0, 'Category D': 0
     };
@@ -162,23 +166,32 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
   const allFarmers = entities.flatMap(e => e.farmers || []);
   const totalVillageCount = entities.reduce((sum, e) => sum + (e.villageCount || 0), 0);
   
-  // 🚀 STEP 3: Fallback handling for the global total accumulator
-  const containsExternalCards = entities.some(e => typeof e.externalFarmCardCount === 'number');
-  const totalFarmCardsCount = containsExternalCards
-    ? entities.reduce((sum, e) => sum + (e.externalFarmCardCount || 0), 0)
-    : allFarmers.filter(f => f.has_farm_card === true).length;
+  // 🚀 FIXED: Accumulate the new object metrics correctly across all rows
+  const totalFarmCardsObj = entities.reduce((acc, e) => {
+    if (e.externalFarmCardCount) {
+      acc.total += e.externalFarmCardCount.total;
+      acc.drafts += e.externalFarmCardCount.drafts;
+      acc.completed += e.externalFarmCardCount.completed;
+    } else {
+      const inline = (e.farmers || []).filter(f => f.has_farm_card === true).length;
+      acc.total += inline;
+      acc.completed += inline;
+    }
+    return acc;
+  }, { total: 0, drafts: 0, completed: 0 });
 
   const renderEntities = [
     { 
       name: "TOTAL (ALL)", 
       farmers: allFarmers, 
       villageCount: totalVillageCount, 
-      externalFarmCardCount: totalFarmCardsCount 
+      externalFarmCardCount: totalFarmCardsObj // 🚀 Pass accumulated object
     },
     ...entities
   ];
 
   const columnData = renderEntities.map(e => computeMetrics(e.farmers, e.villageCount, e.externalFarmCardCount));
+
 
   // ... rest of your rows array, exportToPDF, and table layout JSX remnants stay exactly as they are!
 
@@ -401,10 +414,11 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     });
 
     // 🚀 NEW: Fetch Farm Cards (with polygons) and Farm Diaries (with polygons)
+    // 🚀 NEW: Fetch Farm Cards (with polygons AND status)
     const [farmersRes, draftsRes, farmCardsRes, tempDealersRes] = await Promise.all([
       supabase.from('farmers').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('status', 'SUBMITTED'),
       supabase.from('drafts').select('*, profiles:se_id(name)').eq('se_id', se.id).eq('entity_type', 'farmer'),
-      (supabase as any).from('farm_cards').select('id, farmer_id, boundary_polygon').eq('se_id', se.id), // 🚀 Added id & boundary_polygon
+      (supabase as any).from('farm_cards').select('id, farmer_id, boundary_polygon, status').eq('se_id', se.id), // 🚀 Added status
       (supabase as any).from('temp_dealers').select('*') 
     ]);
 
@@ -565,6 +579,18 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     });
     
     return polygons;
+
+    // 🚀 NEW: Helper to aggregate farm card metrics (Total, Drafts, Completed) for a specific farmer list
+  
+  };
+  const getFarmCardMetricsForFarmers = (farmersList: any[]) => {
+    const ids = new Set(farmersList.map(f => f.id));
+    const relevantCards = farmCards.filter(fc => ids.has(fc.farmer_id));
+    return {
+      total: relevantCards.length,
+      drafts: relevantCards.filter(c => c.status === 'DRAFT').length,
+      completed: relevantCards.filter(c => c.status !== 'DRAFT').length
+    };
   };
 
   return (
@@ -658,14 +684,16 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                     </TabsContent>
                     
                     <TabsContent value="analytics" className="outline-none">
-                      <AnalyticsTable 
-                        entities={displayRoutes.map(route => ({
-                          name: route.name,
-                          farmers: getFarmersForRoute(route),
-                          villageCount: getVillageCountForRoute(route)
-                        }))} 
-                      />
-                    </TabsContent>
+  <AnalyticsTable 
+    entities={displayRoutes.map((route: any) => ({
+      name: route.name,
+      farmers: getFarmersForRoute(route),
+      villageCount: getVillageCountForRoute(route),
+      // 🚀 INLINED: Call the function directly here
+      externalFarmCardCount: getFarmCardMetricsForFarmers(getFarmersForRoute(route)) 
+    }))} 
+  />
+</TabsContent>
 
                     {/* 🚀 Route-Level Satellite Map Tab */}
                     <TabsContent value="map" className="outline-none h-[65vh] w-full relative">
@@ -723,15 +751,17 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                       )}
                     </TabsContent>
 
-                    <TabsContent value="analytics" className="outline-none">
-                      <AnalyticsTable 
-                        entities={(activeRoute.locations?.flatMap((loc: any) => loc.villages || []) || []).map((v: string) => ({
-                          name: v,
-                          farmers: getFarmersForVillage(v),
-                          villageCount: 1
-                        }))} 
-                      />
-                    </TabsContent>
+<TabsContent value="analytics" className="outline-none">
+  <AnalyticsTable 
+    entities={(activeRoute.locations?.flatMap((loc: any) => loc.villages || []) || []).map((v: string) => ({
+      name: v,
+      farmers: getFarmersForVillage(v),
+      villageCount: 1,
+      // 🚀 INLINED: Call the function directly here
+      externalFarmCardCount: getFarmCardMetricsForFarmers(getFarmersForVillage(v)) 
+    }))} 
+  />
+</TabsContent>
 
                     {/* 🚀 Village-Level Satellite Map Tab */}
                     <TabsContent value="map" className="outline-none h-[65vh] w-full relative">
@@ -756,7 +786,8 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                         entities={[{
                           name: activeVillage,
                           farmers: getFarmersForVillage(activeVillage),
-                          villageCount: 1
+                          villageCount: 1,
+                          externalFarmCardCount: getFarmCardMetricsForFarmers(getFarmersForVillage(activeVillage))
                         }]} 
                       />
                     </TabsContent>

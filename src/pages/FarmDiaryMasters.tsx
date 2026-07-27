@@ -15,8 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Shield } from 'lucide-react';
-import { Loader2, Plus, Settings, Ruler, Leaf, ListTree, AlertCircle, Trash2, Map, FlaskConical, Save, CheckSquare, ChevronUp, ChevronDown, Eye, Layers, Edit2, Image as ImageIcon } from 'lucide-react';
+import { Shield, Loader2, Plus, Settings, Ruler, Leaf, ListTree, AlertCircle, Trash2, Map, FlaskConical, Save, CheckSquare, ChevronUp, ChevronDown, Eye, Layers, Edit2, Image as ImageIcon } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
@@ -24,14 +23,12 @@ const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET |
 export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
 
-  // 🚀 NEW: Auth & Permissions Hooks
   const { session, loading: authLoading } = useAuth();
   const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id);
   const access = getModulePerm('farm_diary_masters');
   const [activeTab, setActiveTab] = useState('crops'); 
   const [loading, setLoading] = useState(false);
   
-  // Master Data States
   const [crops, setCrops] = useState<any[]>([]);
   const [stages, setStages] = useState<any[]>([]);
   const [uoms, setUoms] = useState<any[]>([]);
@@ -39,25 +36,21 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [glsProducts, setGlsProducts] = useState<any[]>([]); 
   const [appTypes, setAppTypes] = useState<string[]>(['Spray', 'Drench', 'Broadcasting', 'Basal Dose', 'Seed Treatment', 'Foliar']);
   
-  // SOP Groups States
   const [sopGroups, setSopGroups] = useState<any[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any>(null);
   const [groupForm, setGroupForm] = useState({ crops: [] as string[] });
 
-  // SPREADSHEET BUILDER STATES
   const [layoutCategory, setLayoutCategory] = useState<string>('');
   const [layoutCrops, setLayoutCrops] = useState<string[]>([]);
   const [layoutStages, setLayoutStages] = useState<string[]>([]); 
   const [activeSopStage, setActiveSopStage] = useState<string>('');
   
-  // Interactive Form States
   const [applications, setApplications] = useState<any[]>([]);
   const [recommendation, setRecommendation] = useState('');
   const [selectedParams, setSelectedParams] = useState<any[]>([]);
   const [savingSop, setSavingSop] = useState(false);
 
-  // Modal States
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [isStageOpen, setIsStageOpen] = useState(false);
   const [isUomOpen, setIsUomOpen] = useState(false);
@@ -65,18 +58,15 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [isGlsOpen, setIsGlsOpen] = useState(false);
   const [isMapUomOpen, setIsMapUomOpen] = useState(false);
 
-  // Crop SOP Viewer States
   const [isSopViewOpen, setIsSopViewOpen] = useState(false);
   const [viewCrop, setViewCrop] = useState<any>(null);
   const [viewSopData, setViewSopData] = useState<any[]>([]);
   const [loadingViewSop, setLoadingViewSop] = useState(false);
 
-  // UOM Mapping States
   const [activeParam, setActiveParam] = useState<any>(null);
   const [selectedUoms, setSelectedUoms] = useState<string[]>([]);
   const [defaultUom, setDefaultUom] = useState<string>('');
 
-  // Form States for Masters
   const [newCrop, setNewCrop] = useState({ id: '', name: '', category: '' });
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [newStage, setNewStage] = useState({ id: '', name: '' });
@@ -268,7 +258,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     setLoading(true);
     setLayoutCategory(group.category);
     
-    // 🚀 BULLETPROOF FIX: Strip out any crop IDs that might have been deleted from the master list!
     const validCropIds = (group.crop_ids || []).filter((id: string) => crops.some(c => c.id === id));
     setLayoutCrops(validCropIds);
 
@@ -297,15 +286,18 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const allAssignedCropIds = Array.from(new Set(sopGroups.flatMap(g => g.crop_ids || [])));
   const uniqueCategories = Array.from(new Set(crops.map(c => c.crop_category).filter(Boolean)));
   
-  const filteredCropsForLayout = crops.filter(c => {
-    const matchesCategory = layoutCategory ? c.crop_category === layoutCategory : true;
-    const isAvailable = !allAssignedCropIds.includes(c.id) || layoutCrops.includes(c.id);
-    return matchesCategory && isAvailable;
-  });
-
   const toggleLayoutCrop = (cropId: string) => { setLayoutCrops(prev => prev.includes(cropId) ? prev.filter(id => id !== cropId) : [...prev, cropId]); };
   const toggleLayoutStage = (stageId: string) => { setLayoutStages(prev => prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]); };
-  const selectAllFilteredCrops = () => setLayoutCrops(filteredCropsForLayout.map(c => c.id));
+  
+  // 🚀 FIXED: Only auto-selects valid, unassigned crops from the currently chosen category
+  const selectAllFilteredCrops = () => {
+    const availableIds = crops
+      .filter(c => layoutCategory === '' || layoutCategory === 'ALL' || c.crop_category === layoutCategory)
+      .filter(c => !allAssignedCropIds.includes(c.id) || layoutCrops.includes(c.id))
+      .map(c => c.id);
+    setLayoutCrops(availableIds);
+  };
+  
   const toggleGroupCrop = (cropId: string) => { setGroupForm(prev => ({ crops: prev.crops.includes(cropId) ? prev.crops.filter(id => id !== cropId) : [...prev.crops, cropId] })); };
 
   const moveStageUp = (index: number) => {
@@ -323,11 +315,10 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   };
 
   const saveExecutionOrder = async () => {
-    // 🚀 SANITIZER: Filter out any deleted "ghost" crops before processing
     const activeValidCrops = layoutCrops.filter(id => crops.some(c => c.id === id));
     
     if (activeValidCrops.length === 0 || layoutStages.length === 0) {
-      if (layoutCrops.length > 0) setLayoutCrops([]); // Clean up bad memory
+      if (layoutCrops.length > 0) setLayoutCrops([]); 
       return toast({ title: "Error", description: "No valid crops selected. They may have been deleted.", variant: "destructive" });
     }
 
@@ -348,38 +339,40 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
 
       if (activeValidCrops.length > 0) {
         const derivedCategory = layoutCategory || crops.find(c => c.id === activeValidCrops[0])?.crop_category || 'Mixed';
-        const existingGroup = sopGroups.find(g => g.crop_ids?.length === activeValidCrops.length && g.crop_ids?.every((id: string) => activeValidCrops.includes(id)));
+        const cropNames = activeValidCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
+        const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
+        const groupName = `${derivedCategory}: ${namePreview}`;
 
-        if (!existingGroup) {
-          const cropNames = activeValidCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
-          const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
-          const groupName = `${derivedCategory}: ${namePreview}`;
+        // 🚀 FIXED: Finds existing groups safely and merges them to prevent duplicates
+        const intersectingGroups = sopGroups.filter(g => g.crop_ids?.some((id: string) => activeValidCrops.includes(id)));
 
-          const { data: newGroup, error: grpErr } = await db.from('sop_groups').insert([{ group_name: groupName, category: derivedCategory, crop_ids: activeValidCrops }]).select().single();
-          if (grpErr) toast({ title: "Group Creation Blocked", description: grpErr.message, variant: "destructive" });
-          else if (newGroup) { setSopGroups(prev => [newGroup, ...prev]); toast({ title: "Auto-Group Created", description: `Group "${groupName}" created successfully.` }); }
+        if (intersectingGroups.length > 0) {
+          const primaryGroup = intersectingGroups[0];
+          await db.from('sop_groups').update({ group_name: groupName, category: derivedCategory, crop_ids: activeValidCrops }).eq('id', primaryGroup.id);
+          
+          for (let i = 1; i < intersectingGroups.length; i++) {
+            await db.from('sop_groups').delete().eq('id', intersectingGroups[i].id);
+          }
+        } else {
+          await db.from('sop_groups').insert([{ group_name: groupName, category: derivedCategory, crop_ids: activeValidCrops }]);
         }
       }
       
-      // Auto-update memory if we caught ghost crops
       if (activeValidCrops.length !== layoutCrops.length) setLayoutCrops(activeValidCrops);
       
       toast({ title: "Order Saved", description: "Global stage sequence locked in." });
+      fetchMasters();
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     }
     setLoading(false);
   };
 
-  // ==========================================
-  // 🚀 BULLETPROOF UNIVERSAL DELETE & EDIT OPENERS
-  // ==========================================
   const deleteMaster = async (table: string, id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"?\nWARNING: This action is permanent and may affect related data.`)) return;
     
     setLoading(true);
     try {
-      // 🚀 BULLETPROOF: Immediately purge deleted items from the UI Memory!
       if (table === 'master_crops') {
         setLayoutCrops(prev => prev.filter(cid => cid !== id)); 
         
@@ -576,11 +569,10 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const removeParamRow = (index: number) => { setSelectedParams(selectedParams.filter((_, i) => i !== index)); };
 
   const saveActiveStageSop = async () => {
-    // 🚀 SANITIZER: Filter out any deleted "ghost" crops before processing
     const activeValidCrops = layoutCrops.filter(id => crops.some(c => c.id === id));
     
     if (activeValidCrops.length === 0 || !activeSopStage) {
-      if (layoutCrops.length > 0) setLayoutCrops([]); // Clean up bad memory
+      if (layoutCrops.length > 0) setLayoutCrops([]); 
       return toast({ title: "Error", description: "Select valid crop and stage.", variant: "destructive" });
     }
     
@@ -592,7 +584,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
     try {
       const stageSeq = layoutStages.indexOf(activeSopStage) + 1;
 
-      // 🚀 FIXED: Loop through `activeValidCrops` instead of the raw state
       for (const cropId of activeValidCrops) {
         let parentId;
         const { data: existingParent } = await db.from('sop_crop_stages').select('id').eq('crop_id', cropId).eq('stage_id', activeSopStage).maybeSingle();
@@ -643,19 +634,39 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
         }
       }
 
-      // Auto-update memory if we caught ghost crops
+      if (activeValidCrops.length > 0) {
+        const derivedCategory = layoutCategory || crops.find(c => c.id === activeValidCrops[0])?.crop_category || 'Mixed';
+        const cropNames = activeValidCrops.map(id => crops.find(c => c.id === id)?.crop_name).filter(Boolean);
+        const namePreview = cropNames.slice(0, 2).join(', ') + (cropNames.length > 2 ? ` +${cropNames.length - 2}` : '');
+        const groupName = `${derivedCategory}: ${namePreview}`;
+
+        // 🚀 FIXED: Safely merge intersecting groups
+        const intersectingGroups = sopGroups.filter(g => g.crop_ids?.some((id: string) => activeValidCrops.includes(id)));
+
+        if (intersectingGroups.length > 0) {
+          const primaryGroup = intersectingGroups[0];
+          await db.from('sop_groups').update({ group_name: groupName, category: derivedCategory, crop_ids: activeValidCrops }).eq('id', primaryGroup.id);
+          for (let i = 1; i < intersectingGroups.length; i++) {
+            await db.from('sop_groups').delete().eq('id', intersectingGroups[i].id);
+          }
+        } else {
+          await db.from('sop_groups').insert([{ group_name: groupName, category: derivedCategory, crop_ids: activeValidCrops }]);
+        }
+      }
+
       if (activeValidCrops.length !== layoutCrops.length) setLayoutCrops(activeValidCrops);
 
       toast({ title: "Success!", description: `Stage SOP saved for ${activeValidCrops.length} crop(s).` });
       if (activeValidCrops.length === 1) loadExistingSOP(activeValidCrops[0], activeSopStage);
       
+      fetchMasters();
+
     } catch (err: any) {
       toast({ title: "Save Failed", description: err.message, variant: "destructive" });
     }
     setSavingSop(false);
   };
 
-  // 🚀 NEW: Layer 2 RBAC Guard (Add this right before the return statement)
   if (authLoading || permLoading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -718,7 +729,6 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                           </div>
                         </CardHeader>
                         <CardContent className="py-4 flex-1">
-                          {/* 🚀 FIXED: Dynamically calculates the length of ONLY valid, existing crops */}
                           <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">
                             Included Crops ({ (group.crop_ids || []).filter((id: string) => crops.some(c => c.id === id)).length })
                           </p>
@@ -776,13 +786,18 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                       </Label>
                       <div className="bg-slate-50 border rounded-md p-3 max-h-[250px] overflow-y-auto grid grid-cols-2 gap-2 shadow-inner">
                         {crops
-                          .filter(c => c.crop_category === editingGroup?.category && (!allAssignedCropIds.includes(c.id) || groupForm.crops.includes(c.id)))
-                          .map(c => (
-                          <div key={c.id} className="flex items-center space-x-2 bg-white p-1.5 border rounded-sm">
-                            <Checkbox id={`g-crop-${c.id}`} checked={groupForm.crops.includes(c.id)} onCheckedChange={() => toggleGroupCrop(c.id)} />
-                            <Label htmlFor={`g-crop-${c.id}`} className="text-xs font-medium cursor-pointer truncate flex-1">{c.crop_name}</Label>
-                          </div>
-                        ))}
+                          .filter(c => c.crop_category === editingGroup?.category)
+                          .map(c => {
+                            const isAssignedElsewhere = allAssignedCropIds.includes(c.id) && !groupForm.crops.includes(c.id);
+                            return (
+                              <div key={c.id} className={`flex items-center space-x-2 p-1.5 border rounded-sm ${isAssignedElsewhere ? 'bg-slate-50 opacity-60' : 'bg-white'}`}>
+                                <Checkbox id={`g-crop-${c.id}`} disabled={isAssignedElsewhere} checked={groupForm.crops.includes(c.id)} onCheckedChange={() => toggleGroupCrop(c.id)} />
+                                <Label htmlFor={`g-crop-${c.id}`} className={`text-xs font-medium truncate flex-1 ${isAssignedElsewhere ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                  {c.crop_name} {isAssignedElsewhere && <span className="text-[9px] text-red-500 font-bold ml-1">(Assigned)</span>}
+                                </Label>
+                              </div>
+                            );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1168,15 +1183,15 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                         <TableCell className="text-muted-foreground text-xs">{p.ui_input_type === 'Dropdown Choice' ? JSON.stringify(p.options_data) : '—'}</TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end items-center gap-1">
-                          {p.ui_input_type === 'Numeric' && access.can_edit && (
-                            <Button onClick={() => openUomMapping(p)} variant="outline" size="sm" className="text-primary text-xs h-7">Map UOMs</Button>
-                          )}
-                          {access.can_edit && (
-                            <>
-                              <Button variant="ghost" size="icon" onClick={() => openEditParam(p)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_parameters', p.id, p.parameter_label)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
-                            </>
-                          )}
+                            {p.ui_input_type === 'Numeric' && access.can_edit && (
+                              <Button onClick={() => openUomMapping(p)} variant="outline" size="sm" className="text-primary text-xs h-7 mr-2">Map UOMs</Button>
+                            )}
+                            {access.can_edit && (
+                              <>
+                                <Button variant="ghost" size="icon" onClick={() => openEditParam(p)} className="h-8 w-8 text-slate-500 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => deleteMaster('master_parameters', p.id, p.parameter_label)} className="h-8 w-8 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1250,7 +1265,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                     </h3>
                   </div>
                   <div className="space-y-4 flex-1">
-                  <Select disabled={!access.can_edit} value={layoutCategory} onValueChange={(v) => { setLayoutCategory(v === 'ALL' ? '' : v); setLayoutCrops([]); }}>
+                    <Select disabled={!access.can_edit} value={layoutCategory} onValueChange={(v) => { setLayoutCategory(v === 'ALL' ? '' : v); setLayoutCrops([]); }}>
                       <SelectTrigger className="bg-white"><SelectValue placeholder="Filter by Category..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ALL">All Categories</SelectItem>
@@ -1258,12 +1273,25 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                       </SelectContent>
                     </Select>
                     <div className="bg-white border rounded-md p-3 h-[150px] overflow-y-auto grid grid-cols-2 gap-2 shadow-inner">
-                      {filteredCropsForLayout.map(c => (
-                        <div key={c.id} className="flex items-center space-x-2 hover:bg-muted/50 p-1 rounded">
-                          <Checkbox disabled={!access.can_edit} id={`crop-${c.id}`} checked={layoutCrops.includes(c.id)} onCheckedChange={() => toggleLayoutCrop(c.id)} />
-                          <Label htmlFor={`crop-${c.id}`} className="text-xs font-medium cursor-pointer truncate">{c.crop_name}</Label>
-                        </div>
-                      ))}
+                      {crops
+                        .filter(c => layoutCategory === '' || layoutCategory === 'ALL' || c.crop_category === layoutCategory)
+                        .map(c => {
+                          // 🚀 FIXED: Identify if the crop is already assigned to a DIFFERENT group
+                          const isAssignedElsewhere = allAssignedCropIds.includes(c.id) && !layoutCrops.includes(c.id);
+                          return (
+                            <div key={c.id} className={`flex items-center space-x-2 p-1 rounded ${isAssignedElsewhere ? 'opacity-50' : 'hover:bg-muted/50'}`}>
+                              <Checkbox 
+                                disabled={!access.can_edit || isAssignedElsewhere} 
+                                id={`crop-${c.id}`} 
+                                checked={layoutCrops.includes(c.id)} 
+                                onCheckedChange={() => toggleLayoutCrop(c.id)} 
+                              />
+                              <Label htmlFor={`crop-${c.id}`} className={`text-xs font-medium truncate flex-1 ${isAssignedElsewhere ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                {c.crop_name} {isAssignedElsewhere && <span className="text-[10px] text-red-500 font-bold ml-1">(Assigned)</span>}
+                              </Label>
+                            </div>
+                          );
+                      })}
                     </div>
                     <div className="flex justify-between items-center text-xs text-muted-foreground">
                       <span>{layoutCrops.length} selected</span>
