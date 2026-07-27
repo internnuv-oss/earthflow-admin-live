@@ -1,8 +1,10 @@
+// src/pages/Dashboard.tsx
+
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import KpiCard from '@/components/KpiCard';
 import AppLayout from '@/components/AppLayout';
-import AdminUserManagement from '@/components/AdminUserManagement'; // 🚀 IMPORT THE USER MANAGEMENT COMPONENT
+import AdminUserManagement from '@/components/AdminUserManagement';
 import { Users, Clock, Wheat, Truck, UserCog, CheckCircle2, Loader2, Shield } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth'; 
 import { usePermissions } from '@/hooks/usePermissions';
@@ -19,7 +21,6 @@ interface Counts {
 const Dashboard = ({ onLogout }: DashboardProps) => {
   const { session, role, loading: authLoading } = useAuth(); 
 
-  // 🚀 NEW: Fetch Permissions
   const { getModulePerm, loading: permLoading } = usePermissions(session?.user?.id);
   const dashboardAccess = getModulePerm('dashboard');
   
@@ -31,26 +32,37 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
   useEffect(() => {
     (async () => {
       const head = { count: 'exact' as const, head: true };
-      const [ses, sesC, dist, distP, deal, dealP, farm, farmP] = await Promise.all([
+      
+      // Fetch submitted profiles + explicitly fetch from the new `drafts` table
+      const [
+        ses, sesC, 
+        dist, deal, farm, 
+        draftDist, draftDeal, draftFarm
+      ] = await Promise.all([
         supabase.from('profiles').select('id', head).eq('role', 'SE'),
         supabase.from('sales_executive').select('profile_id', head).eq('is_profile_complete', true),
         supabase.from('distributors').select('id', head),
-        supabase.from('distributors').select('id', head).eq('status', 'DRAFT'),
         supabase.from('dealers').select('id', head),
-        supabase.from('dealers').select('id', head).eq('status', 'DRAFT'),
         supabase.from('farmers').select('id', head),
-        supabase.from('farmers').select('id', head).eq('status', 'DRAFT'),
+        supabase.from('drafts').select('id', head).eq('entity_type', 'distributor'),
+        supabase.from('drafts').select('id', head).eq('entity_type', 'dealer'),
+        supabase.from('drafts').select('id', head).eq('entity_type', 'farmer'),
       ]);
+
+      // Combine Main Tables (Submitted) + Drafts Table (Pending)
       setC({
-        ses: ses.count || 0, sesComplete: sesC.count || 0,
-        distributors: dist.count || 0, distributorsPending: distP.count || 0,
-        dealers: deal.count || 0, dealersPending: dealP.count || 0,
-        farmers: farm.count || 0, farmersPending: farmP.count || 0,
+        ses: ses.count || 0, 
+        sesComplete: sesC.count || 0,
+        distributors: (dist.count || 0) + (draftDist.count || 0), 
+        distributorsPending: draftDist.count || 0,
+        dealers: (deal.count || 0) + (draftDeal.count || 0), 
+        dealersPending: draftDeal.count || 0,
+        farmers: (farm.count || 0) + (draftFarm.count || 0), 
+        farmersPending: draftFarm.count || 0,
       });
     })();
   }, []);
 
-  // 🚀 NEW: Layer 2 RBAC Guard
   if (authLoading || permLoading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -71,7 +83,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
 
   return (
     <AppLayout onLogout={onLogout}>
-      <div className="space-y-8"> {/* Added space-y-8 wrapper to cleanly space dashboard sections */}
+      <div className="space-y-8">
         <div>
           <h2 className="text-lg font-semibold mb-1">Overview</h2>
           <p className="text-sm text-muted-foreground mb-4">
@@ -79,17 +91,16 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
           </p>
         </div>
 
-        {/* KPI Cards Grid - Visible to everyone with Dashboard View Access */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        {/* 🚀 RESPONSIVE FIX: Adjusted grid columns and spacing so text has room to breathe */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           <KpiCard title="Sales Executives" value={c.ses} icon={UserCog} description="Active SEs in territory" to="/sales-executives" />
           <KpiCard title="SE Profiles Complete" value={c.sesComplete} icon={CheckCircle2} description="Finished mobile onboarding" />
           <KpiCard title="Distributors" value={c.distributors} icon={Truck} description="View directory" to="/distributors" />
           <KpiCard title="Dealers" value={c.dealers} icon={Users} description="View directory" to="/dealers" />
           <KpiCard title="Farmers" value={c.farmers} icon={Wheat} description="View directory" to="/farmers" />
-          <KpiCard title="Pending Approvals" value={totalPending} icon={Clock} description="Drafts across all directories" accent="muted" />
+          <KpiCard title="Total Drafts" value={totalPending} icon={Clock} description="Drafts across all directories" accent="muted" />
         </div>
 
-        {/* ONLY RENDER TEAM MANAGEMENT FOR MAIN ADMINS (TH) */}
         {role === 'Super Admin' && (
           <div className="border-t pt-8">
             <AdminUserManagement />
