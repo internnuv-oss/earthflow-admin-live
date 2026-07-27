@@ -32,6 +32,7 @@ const MOBILE_MODULES = [
   { key: 'mobile_distributor', label: 'Distributor Module' },
   { key: 'mobile_dealer', label: 'Dealer Module' },
   { key: 'mobile_farmer', label: 'Farmer Module (Includes Farm Card, Diary, FSPP, etc.)' },
+  { key: 'mobile_farmer_onboard', label: 'Farmer Onboarding (Profiles & General Visits Only)' },
   { key: 'mobile_fpo', label: 'FPO Module' },
   { key: 'mobile_travel_activity', label: 'Executive Travel Activity (Attendance, Reports, Expenses)' },
   { key: 'mobile_retail', label: 'Retail & Inventory' },
