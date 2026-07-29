@@ -40,6 +40,7 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
     start_time: '',
     end_time: '',
     is_personal_vehicle: false,
+    vehicle_type: 'two-wheeler', // 🚀 NEW: Added vehicle_type to state
     start_km: '',
     end_km: '',
     total_distance: 0,
@@ -53,17 +54,14 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
       .then(({ data }) => { if (data) setSeList(data); });
   }, [userId, shiftAccess.can_view]);
 
-  // 2. Fetch Shifts based on filters
   // 2. Fetch Shifts based on filters (Filtering out Demo Executives)
   const fetchShifts = async () => {
     setLoading(true);
     
-    // 🚀 FIXED: Inner join syntax 'profiles!inner(name, is_demo)' forces Supabase 
-    // to filter the shifts table based on conditions inside the linked profiles table
     let query = supabase
       .from('shifts')
       .select('*, profiles!inner(name, is_demo)')
-      .eq('profiles.is_demo', false) // 🚀 EXCLUDE DEMO EXECUTIVES HERE
+      .eq('profiles.is_demo', false) 
       .order('start_time', { ascending: false });
 
     if (selectedDate) query = query.eq('date', selectedDate);
@@ -88,7 +86,6 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
 
   const handleOpenEditor = (shift: any = null) => {
     if (shift) {
-      // 🚀 EDIT MODE: Target exact row by capturing entire object (including unique id)
       setEditingShift(shift);
       setFormData({
         se_id: shift.se_id,
@@ -96,13 +93,13 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
         start_time: formatForInput(shift.start_time),
         end_time: formatForInput(shift.end_time),
         is_personal_vehicle: shift.is_personal_vehicle || false,
+        vehicle_type: shift.vehicle_type || 'two-wheeler', // 🚀 NEW: Load existing type
         start_km: shift.start_km || '',
         end_km: shift.end_km || '',
         total_distance: shift.total_distance || 0,
         date: shift.date
       });
     } else {
-      // 🚀 CREATE MODE: Start fresh
       setEditingShift(null);
       setFormData({
         se_id: '',
@@ -110,6 +107,7 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
         start_time: formatForInput(Date.now()),
         end_time: '',
         is_personal_vehicle: false,
+        vehicle_type: 'two-wheeler', // 🚀 NEW: Default for new shifts
         start_km: '',
         end_km: '',
         total_distance: 0,
@@ -130,18 +128,15 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
     const startMs = startDateObj.getTime();
     const endMs = formData.end_time ? new Date(formData.end_time).getTime() : null;
 
-    // 1. Auto-generate the date string from the Punch In time
     const calculatedDateString = startDateObj.toISOString().split('T')[0];
     const calculatedStatus = endMs ? 'COMPLETED' : 'ACTIVE';
 
-    // 🚀 2. DUP-CHECK: Look up if this SE already has a shift on this specific date
     let checkQuery = supabase
       .from('shifts')
       .select('id')
       .eq('se_id', formData.se_id)
       .eq('date', calculatedDateString);
 
-    // If we are editing, ignore the current row itself
     if (editingShift) {
       checkQuery = checkQuery.neq('id', editingShift.id);
     }
@@ -153,7 +148,6 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
       return toast({ title: 'Database Error', description: checkError.message, variant: 'destructive' });
     }
 
-    // 🚀 3. RESTRICTION: Block saving if an entry is found!
     if (existingShifts && existingShifts.length > 0) {
       setSaving(false);
       return toast({ 
@@ -171,6 +165,7 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
       start_time: startMs,
       end_time: endMs,
       is_personal_vehicle: formData.is_personal_vehicle,
+      vehicle_type: formData.is_personal_vehicle ? formData.vehicle_type : null, // 🚀 NEW: Include vehicle type in DB payload (null if not personal)
       start_km: formData.start_km,
       end_km: formData.end_km,
       total_distance: parseFloat(formData.total_distance.toString()) || 0,
@@ -278,7 +273,6 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
                       <td className="px-4 py-3">{shift.end_time ? new Date(Number(shift.end_time)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '—'}</td>
                       <td className="px-4 py-3">
                         {(() => {
-                          // 🚀 CALCULATE true odometer distance on the fly
                           let odoDistance = 0;
                           if (shift.start_km && shift.end_km) {
                             const s = parseFloat(shift.start_km.replace(/[^0-9.]/g, ''));
@@ -288,18 +282,21 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
                             }
                           }
                           
-                          // Prioritize Odo Distance, fallback to GPS total_distance
                           const finalDistanceDisplay = odoDistance > 0 ? odoDistance : Number(shift.total_distance || 0).toFixed(2);
 
                           return (
                             <div className="flex flex-col">
                               <div className="flex items-center gap-1.5 font-medium">
-                                {shift.is_personal_vehicle && <Car className="h-3.5 w-3.5 text-blue-500" />}
+                                {/* 🚀 NEW: Render the specific vehicle badge */}
+                                {shift.is_personal_vehicle && (
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                                    {shift.vehicle_type === 'four-wheeler' ? '4W' : '2W'}
+                                  </Badge>
+                                )}
                                 <span>{finalDistanceDisplay} km</span>
                               </div>
-                              {/* Subtitle helper showing if it used Odo readings or GPS */}
                               {odoDistance > 0 && (
-                                <span className="text-[10px] text-muted-foreground">
+                                <span className="text-[10px] text-muted-foreground mt-0.5">
                                   Odo: {shift.start_km} - {shift.end_km}
                                 </span>
                               )}
@@ -368,14 +365,39 @@ const ShiftsPage = ({ onLogout }: { onLogout: () => void }) => {
               </div>
 
               {formData.is_personal_vehicle && (
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Start Odometer</Label>
-                    <Input placeholder="e.g. 12050" value={formData.start_km} onChange={e => setFormData({...formData, start_km: e.target.value})} />
+                <div className="space-y-4 pt-2">
+                  {/* 🚀 NEW: Vehicle Type Toggle built to match mobile functionality */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Vehicle Type</Label>
+                    <div className="flex gap-3">
+                      <Button 
+                        type="button" 
+                        variant={formData.vehicle_type === 'two-wheeler' ? 'default' : 'outline'} 
+                        onClick={() => setFormData({...formData, vehicle_type: 'two-wheeler'})} 
+                        className={`flex-1 h-9 ${formData.vehicle_type === 'two-wheeler' ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200' : ''}`}
+                      >
+                        Two-Wheeler
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant={formData.vehicle_type === 'four-wheeler' ? 'default' : 'outline'} 
+                        onClick={() => setFormData({...formData, vehicle_type: 'four-wheeler'})} 
+                        className={`flex-1 h-9 ${formData.vehicle_type === 'four-wheeler' ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200' : ''}`}
+                      >
+                        Four-Wheeler
+                      </Button>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">End Odometer</Label>
-                    <Input placeholder="e.g. 12110" value={formData.end_km} onChange={e => setFormData({...formData, end_km: e.target.value})} />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Start Odometer</Label>
+                      <Input placeholder="e.g. 12050" value={formData.start_km} onChange={e => setFormData({...formData, start_km: e.target.value})} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">End Odometer</Label>
+                      <Input placeholder="e.g. 12110" value={formData.end_km} onChange={e => setFormData({...formData, end_km: e.target.value})} />
+                    </div>
                   </div>
                 </div>
               )}
