@@ -1443,8 +1443,22 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                                               </Select>
                                             </TableCell>
                                             <TableCell className="p-1.5"><Input placeholder="1L/Ton" value={app.dosage_value} onChange={e => updateAppRow(index, 'dosage_value', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
-                                            <TableCell className="p-1.5"><Input placeholder="Benefit..." value={app.benefit} onChange={e => updateAppRow(index, 'benefit', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
-                                            <TableCell className="p-1.5"><Input placeholder="Impact..." value={app.impact} onChange={e => updateAppRow(index, 'impact', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
+                                            <TableCell className="p-1.5">
+  <Textarea 
+    placeholder="Enter benefits..." 
+    value={app.benefit} 
+    onChange={e => updateAppRow(index, 'benefit', e.target.value)} 
+    className="min-h-[60px] h-full text-xs bg-white py-1.5 px-2 resize-y" 
+  />
+</TableCell>
+<TableCell className="p-1.5">
+  <Textarea 
+    placeholder="Enter impact..." 
+    value={app.impact} 
+    onChange={e => updateAppRow(index, 'impact', e.target.value)} 
+    className="min-h-[60px] h-full text-xs bg-white py-1.5 px-2 resize-y" 
+  />
+</TableCell>
                                             <TableCell className="p-1.5"><Input placeholder="e.g. 1 App" value={app.recommendation} onChange={e => updateAppRow(index, 'recommendation', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
                                             <TableCell className="p-1.5"><Input placeholder="Chemicals..." value={app.chemical_name} onChange={e => updateAppRow(index, 'chemical_name', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
                                             <TableCell className="p-1.5"><Input placeholder="e.g. 1 Bag" value={app.chemical_dosage} onChange={e => updateAppRow(index, 'chemical_dosage', e.target.value)} className="h-8 text-xs bg-white" /></TableCell>
@@ -1577,7 +1591,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
           
           {/* FULL EXCEL-STYLE CROP SOP VIEWER DIALOG */}
           <Dialog open={isSopViewOpen} onOpenChange={setIsSopViewOpen}>
-            <DialogContent className="max-w-[95vw] w-full max-h-[90vh] flex flex-col p-0 overflow-hidden">
+            <DialogContent className="max-w-[95vw] w-full h-[90vh] flex flex-col p-0 overflow-hidden">
               <DialogHeader className="px-6 py-4 border-b bg-muted/10 shrink-0">
                 <DialogTitle className="flex items-center gap-2 text-xl">
                   <CheckSquare className="h-5 w-5 text-primary" /> SOP Format View: <span className="text-primary font-bold">{viewCrop?.crop_name}</span>
@@ -1585,28 +1599,28 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                 <DialogDescription>Read-only view of the chronologically mapped stages, applications, and parameters.</DialogDescription>
               </DialogHeader>
               
-              <div className="flex-1 overflow-auto p-6 bg-slate-50">
+              <div className="flex-1 flex flex-col min-h-0 p-4 sm:p-6 bg-slate-50">
                 {loadingViewSop ? (
-                   <div className="flex flex-col items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" /><p className="text-sm text-muted-foreground">Generating Table...</p></div>
+                   <div className="flex flex-col items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" /><p className="text-sm text-muted-foreground">Generating Table...</p></div>
                 ) : viewSopData.length === 0 ? (
-                   <div className="flex flex-col items-center justify-center py-20 bg-white border border-dashed rounded-lg"><AlertCircle className="h-10 w-10 text-muted-foreground mb-4 opacity-30" /><p className="text-sm font-semibold text-muted-foreground">No SOP Data Found</p><p className="text-xs text-muted-foreground mt-1">Configure this crop in the SOP Builder tab first.</p></div>
+                   <div className="flex flex-col items-center justify-center h-full bg-white border border-dashed rounded-lg"><AlertCircle className="h-10 w-10 text-muted-foreground mb-4 opacity-30" /><p className="text-sm font-semibold text-muted-foreground">No SOP Data Found</p><p className="text-xs text-muted-foreground mt-1">Configure this crop in the SOP Builder tab first.</p></div>
                 ) : (
-                  <div className="bg-white border shadow-sm rounded-lg overflow-x-auto">
+                  <div className="bg-white border shadow-sm rounded-lg flex-1 flex flex-col min-h-0 overflow-hidden [&>div]:flex-1 [&>div]:overflow-auto custom-scrollbar">
                     <Table className="min-w-[1500px]">
-                      <TableHeader className="bg-slate-100/80">
+                      <TableHeader className="bg-slate-100/80 sticky top-0 z-20 shadow-sm outline outline-1 outline-slate-200">
                         <TableRow>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800 w-[180px]">Crop Stage</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Application</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">DAS</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Application Method</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800 text-primary">Product</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Dosage / Acre</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Benefit</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Impact</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Recommendation</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Chemicals</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Dosage / Acre</TableHead>
-                          <TableHead className="border border-slate-200 font-bold text-slate-800">Parameters To measure</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 w-[180px] bg-slate-100">Crop Stage</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Application</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">DAS</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Application Method</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 text-primary bg-slate-100">Product</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Dosage / Acre</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Benefit</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Impact</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Recommendation</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Chemicals</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Dosage / Acre</TableHead>
+                          <TableHead className="border border-slate-200 font-bold text-slate-800 bg-slate-100">Parameters To measure</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
