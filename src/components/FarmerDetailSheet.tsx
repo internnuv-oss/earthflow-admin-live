@@ -11,8 +11,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
   FileText, Edit, Save, X, Loader2, Plus, Trash2, Check, ChevronsUpDown, 
-  ChevronLeft, LayoutDashboard, User, ClipboardCheck, Map as MapIcon, Leaf, ChevronRight
+  ChevronLeft, LayoutDashboard, User, ClipboardCheck, Map as MapIcon, Leaf, ChevronRight, Clock
 } from 'lucide-react';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { KeyValueGrid, Section, fmtKey } from '@/lib/jsonViewer';
 import { supabase } from '@/integrations/supabase/client';
@@ -124,7 +125,7 @@ const safeArray = (val: any): string[] => {
   return [];
 };
 
-type ViewState = 'dashboard' | 'profile' | 'fspp' | 'farm_cards' | 'farm_card_detail';
+type ViewState = 'dashboard' | 'profile' | 'fspp' | 'farm_cards' | 'farm_card_detail' | 'farm_diary_detail';
 
 const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props) => {
   const { session } = useAuth();
@@ -134,11 +135,19 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
   const hasEditAccess = getModulePerm('farmers').can_edit;
   const { toast } = useToast();
 
-  // 🚀 NAVIGATION STATE
+  // 🚀 NAVIGATION & DATA STATES
   const [view, setView] = useState<ViewState>('dashboard');
   const [farmCards, setFarmCards] = useState<any[]>([]);
   const [selectedFarmCard, setSelectedFarmCard] = useState<any>(null);
- 
+  const [farmDiaries, setFarmDiaries] = useState<any[]>([]); 
+  const [selectedFarmDiary, setSelectedFarmDiary] = useState<any>(null); 
+  
+  // 🚀 NEW: State for nested observations & SOP Timeline
+  const [observationSessions, setObservationSessions] = useState<any[]>([]);
+  const [sopTemplateStages, setSopTemplateStages] = useState<any[]>([]); // <-- ADD THIS
+  const [loadingObservations, setLoadingObservations] = useState(false);
+  
+
   // --- EDIT STATE ---
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -169,13 +178,71 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
     if (f?.id && open) {
       setView('dashboard');
       setIsEditing(false);
-      // 🚀 FIXED: Added (supabase as any) to bypass the local schema strict check
       (supabase as any).from('farm_cards').select('*').eq('farmer_id', f.id)
         .then(({data}: any) => setFarmCards(data || []));
     }
   }, [f, open]);
 
-  // 2. Fetch Locations on Edit
+  // 2. Fetch Farm Diaries when a specific Farm Card is opened
+  useEffect(() => {
+    if (selectedFarmCard && view === 'farm_card_detail') {
+      (supabase as any).from('farm_diary')
+        .select('*')
+        .eq('farm_card_id', selectedFarmCard.id)
+        .order('created_at', { ascending: false })
+        .then(({data}: any) => setFarmDiaries(data || []));
+    }
+  }, [selectedFarmCard, view]);
+
+  // 🚀 NEW 3: Fetch Deep Nested Crop Observations when a Diary is opened
+  // 🚀 NEW 3: Fetch Deep Nested Crop Observations AND the Crop's SOP Timeline
+  useEffect(() => {
+    if (selectedFarmDiary && view === 'farm_diary_detail') {
+      setLoadingObservations(true);
+      (supabase as any).from('crop_observation_sessions')
+        .select(`
+          id, created_at, overall_plant_health_score, expected_yield_potential, action_required_tier, executive_notes, days_after_sowing_das,
+          selected_crop_id, selected_stage_id,
+          master_crops ( crop_name ),
+          master_crop_stages ( stage_name ),
+          plant_sample_sets (
+            id, sample_set_index, sample_photo_file_path,
+            sample_parameter_values (
+              id, logged_value_raw,
+              master_parameters ( parameter_label, ui_input_type ),
+              master_uom ( uom_symbol )
+            )
+          )
+        `)
+        .eq('farm_diary_id', selectedFarmDiary.id)
+        .order('created_at', { ascending: false })
+        .then(async ({data}: any) => {
+          const sessions = data || [];
+          setObservationSessions(sessions);
+          
+          // If we found observations, fetch the entire chronological timeline for that specific crop!
+          if (sessions.length > 0 && sessions[0].selected_crop_id) {
+            const { data: stagesData } = await (supabase as any).from('sop_crop_stages')
+               .select(`
+                 id, stage_sequence, chemical_recommendation_and_dosage,
+                 stage_id,
+                 master_crop_stages ( stage_name )
+               `)
+               .eq('crop_id', sessions[0].selected_crop_id)
+               .order('stage_sequence', { ascending: true });
+            
+            setSopTemplateStages(stagesData || []);
+          } else {
+            setSopTemplateStages([]);
+          }
+
+          setLoadingObservations(false);
+        });
+    }
+  }, [selectedFarmDiary, view]);
+
+
+  // Fetch Locations on Edit
   useEffect(() => {
     if (!isEditing) return;
     const fetchDistricts = async () => {
@@ -287,9 +354,10 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
   const updateArr = (setter: any, idx: number, key: string, val: any) => setter((prev: any) => prev.map((item: any, i: number) => i === idx ? { ...item, [key]: val } : item));
   const removeArr = (setter: any, idx: number) => setter((prev: any) => prev.filter((_: any, i: number) => i !== idx));
 
-  // 🚀 NAVIGATION LOGIC
+  // ENHANCED NAVIGATION LOGIC
   const handleBack = () => {
-    if (view === 'farm_card_detail') setView('farm_cards');
+    if (view === 'farm_diary_detail') setView('farm_card_detail');
+    else if (view === 'farm_card_detail') setView('farm_cards');
     else setView('dashboard');
   };
 
@@ -314,7 +382,7 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
     <Sheet open={open} onOpenChange={o => { if (!o) { setIsEditing(false); onClose(); } }}>
       <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-3xl p-0 flex flex-col bg-slate-50">
         
-        {/* 🚀 HEADER WITH BACK BUTTON */}
+        {/* HEADER WITH BACK BUTTON */}
         <SheetHeader className="px-6 py-5 border-b border-border bg-white shadow-sm z-10 space-y-4">
           <div className="flex items-center justify-between gap-4">
             
@@ -332,6 +400,7 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
                   {view === 'fspp' && "FSPP Evaluation"}
                   {view === 'farm_cards' && "Farm Cards Directory"}
                   {view === 'farm_card_detail' && `Plot: ${selectedFarmCard?.card_data?.fieldNumber || 'Farm Card'}`}
+                  {view === 'farm_diary_detail' && `Diary: ${selectedFarmDiary?.farm_name || 'Unnamed Diary'}`}
                 </SheetTitle>
                 
                 {!isEditing && view === 'dashboard' && (
@@ -369,7 +438,7 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
           </div>
         </SheetHeader>
 
-        {/* 🚀 MAIN CONTENT AREA */}
+        {/* MAIN CONTENT AREA */}
         <ScrollArea className="flex-1">
           
           {/* ============================================================== */}
@@ -470,18 +539,18 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
               </div>
 
               <Section title="Evaluation Metrics">
-  <KeyValueGrid data={{
-    "Mindset A (Innovator)": fspp.mindsetA || '—',
-    "Mindset B (Investment)": fspp.mindsetB || '—',
-    "Mindset C (Sustainability)": fspp.mindsetC || '—',
-    "Mindset D (Compliance)": fspp.mindsetD || '—',
-    "Biofertilizer Awareness": fspp.bioAwareness || '—',
-    "GLS Knowledge": fspp.glsKnowledge || '—',
-    "Seasonal Expense": fspp.seasonalExpense || '—',
-    "Knockout Flag?": fspp.isKnockout ? 'Yes (Disqualified)' : 'No',
-    "Evaluation Date": fspp.evaluationDate ? new Date(fspp.evaluationDate).toLocaleDateString() : '—'
-  }} />
-</Section>
+                <KeyValueGrid data={{
+                  "Mindset A (Innovator)": fspp.mindsetA || '—',
+                  "Mindset B (Investment)": fspp.mindsetB || '—',
+                  "Mindset C (Sustainability)": fspp.mindsetC || '—',
+                  "Mindset D (Compliance)": fspp.mindsetD || '—',
+                  "Biofertilizer Awareness": fspp.bioAwareness || '—',
+                  "GLS Knowledge": fspp.glsKnowledge || '—',
+                  "Seasonal Expense": fspp.seasonalExpense || '—',
+                  "Knockout Flag?": fspp.isKnockout ? 'Yes (Disqualified)' : 'No',
+                  "Evaluation Date": fspp.evaluationDate ? new Date(fspp.evaluationDate).toLocaleDateString() : '—'
+                }} />
+              </Section>
             </div>
           )}
 
@@ -499,7 +568,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
                   <div 
                     key={fc.id} 
                     onClick={() => { setSelectedFarmCard(fc); setView('farm_card_detail'); }}
-                    // 🚀 DYNAMIC ENTIRE CARD STYLING
                     className={cn(
                       "border rounded-xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-all group",
                       isDraft 
@@ -509,7 +577,6 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        {/* 🚀 DYNAMIC ICON COLOR */}
                         <div className={cn(
                           "h-10 w-10 rounded-lg flex items-center justify-center transition-colors",
                           isDraft 
@@ -552,146 +619,385 @@ const FarmerDetailSheet = ({ farmer: f, open, onClose, onSaved, canEdit }: Props
           )}
 
           {/* ============================================================== */}
-          {/* VIEW: FARM CARD SPECIFIC DETAILS */}
+          {/* VIEW: TABBED FARM CARD SPECIFIC DETAILS & DIARIES */}
           {/* ============================================================== */}
           {view === 'farm_card_detail' && selectedFarmCard && (
-            <div className="p-6 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                {/* 🚀 DYNAMIC STATUS BADGE (Detail View) */}
-                <Badge className={cn(
-                  (selectedFarmCard.status || 'DRAFT').toUpperCase() === 'DRAFT'
-                    ? "bg-orange-100 text-orange-800 hover:bg-orange-100 border-orange-200"
-                    : "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
-                )}>
-                  {(selectedFarmCard.status || 'DRAFT').toUpperCase()}
-                </Badge>
-                
-                <Badge variant="outline">
-                  Created: {new Date(selectedFarmCard.created_at).toLocaleDateString()}
-                </Badge>
+            <Tabs defaultValue="details" className="flex flex-col min-h-0 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="bg-white px-6 pt-4 border-b">
+                <TabsList className="grid grid-cols-2 w-full sm:w-auto sm:max-w-md bg-muted/50">
+                  <TabsTrigger value="details">Card Details</TabsTrigger>
+                  <TabsTrigger value="diaries">Farm Diaries</TabsTrigger>
+                </TabsList>
               </div>
-
-              {/* Just loop through the massive farm card json dynamically! */}
-              <Section title="Plot Geography">
-                <KeyValueGrid data={{
-                  "State": selectedFarmCard.card_data.state,
-                  "District": selectedFarmCard.card_data.district,
-                  "Taluka": selectedFarmCard.card_data.taluka,
-                  "Village": selectedFarmCard.card_data.village,
-                  "Survey No": selectedFarmCard.card_data.surveyNo,
-                  "Land Status": selectedFarmCard.card_data.landStatus,
-                  "Cultivated Area": `${selectedFarmCard.card_data.cultivatedArea} ${selectedFarmCard.card_data.cultivatedAreaUnit}`,
-                }} />
-              </Section>
-
-              <Section title="Soil & Water Metrics">
-                <KeyValueGrid data={{
-                  "Soil Type": selectedFarmCard.card_data.soilType,
-                  "Soil pH": selectedFarmCard.card_data.soilPh,
-                  "Soil EC": selectedFarmCard.card_data.soilEc,
-                  "Organic Matter": selectedFarmCard.card_data.organicMatter,
-                  "Water Source": selectedFarmCard.card_data.waterSource,
-                  "Water pH": selectedFarmCard.card_data.waterPh,
-                  "Water TDS": selectedFarmCard.card_data.waterTds,
-                  "Irrigation Method": selectedFarmCard.card_data.irrigationMethod,
-                  "Drip Area": `${selectedFarmCard.card_data.dripArea} ${selectedFarmCard.card_data.dripAreaUnit}`,
-                  "Pump HP": selectedFarmCard.card_data.pumpHp,
-                }} />
-              </Section>
-
-              <Section title="Livestock & Assets">
-                <KeyValueGrid data={{
-                  "Milch Cows": selectedFarmCard.card_data.milchCows,
-                  "Buffaloes": selectedFarmCard.card_data.buffaloes,
-                  "Draft Animals": selectedFarmCard.card_data.draftAnimals,
-                  "Goats/Sheep/Poultry": selectedFarmCard.card_data.goatsSheepPoultry,
-                  "FYM Generated": selectedFarmCard.card_data.fymGenerated,
-                  "Labour Type": selectedFarmCard.card_data.labourType,
-                }} />
-              </Section>
-
-              <Section title="Yield History">
-                {selectedFarmCard.card_data.yieldHistory && selectedFarmCard.card_data.yieldHistory.length > 0 ? (
-                  <div className="rounded-md border border-border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-white">
-                          <TableHead className="font-semibold text-xs whitespace-nowrap">Year</TableHead>
-                          <TableHead className="font-semibold text-xs whitespace-nowrap">Season</TableHead>
-                          <TableHead className="font-semibold text-xs whitespace-nowrap">Crop</TableHead>
-                          <TableHead className="font-semibold text-xs whitespace-nowrap">Area</TableHead>
-                          <TableHead className="font-semibold text-xs whitespace-nowrap">Yield</TableHead>
-                          <TableHead className="font-semibold text-xs whitespace-nowrap">Price/Qtl</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedFarmCard.card_data.yieldHistory.map((yh: any, i: number) => (
-                          <TableRow key={i} className="bg-white">
-                            <TableCell className="text-xs">{yh.year}</TableCell>
-                            <TableCell className="text-xs">{yh.season}</TableCell>
-                            <TableCell className="text-xs font-medium">{yh.cropGrown}</TableCell>
-                            <TableCell className="text-xs">{yh.area} {yh.areaUnit}</TableCell>
-                            <TableCell className="text-xs">{yh.yieldQtl}</TableCell>
-                            <TableCell className="text-xs">₹ {yh.priceQtl}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+              
+              <div className="px-6 py-6 space-y-8">
+                
+                <TabsContent value="details" className="space-y-6 mt-0">
+                  <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                    <Badge className={cn(
+                      (selectedFarmCard.status || 'DRAFT').toUpperCase() === 'DRAFT'
+                        ? "bg-orange-100 text-orange-800 hover:bg-orange-100 border-orange-200"
+                        : "bg-green-100 text-green-800 hover:bg-green-100 border-green-200"
+                    )}>
+                      {(selectedFarmCard.status || 'DRAFT').toUpperCase()}
+                    </Badge>
+                    <Badge variant="outline">
+                      Created: {new Date(selectedFarmCard.created_at).toLocaleDateString()}
+                    </Badge>
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">No yield history available.</p>
-                )}
-              </Section>
 
-              <Section title="Media & Attachments">
-                {selectedFarmCard.media_urls && Object.keys(selectedFarmCard.media_urls).length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Object.entries(selectedFarmCard.media_urls).map(([key, rawUrl]) => {
-                      const url = String(rawUrl);
-                      // Auto-detect videos vs images based on extension
-                      const isVideo = url.match(/\.(mp4|mov|webm)$/i);
-                      const displayName = key.replace(/_/g, ' ').toUpperCase();
+                  <Section title="Plot Geography">
+                    <KeyValueGrid data={{
+                      "State": selectedFarmCard.card_data.state,
+                      "District": selectedFarmCard.card_data.district,
+                      "Taluka": selectedFarmCard.card_data.taluka,
+                      "Village": selectedFarmCard.card_data.village,
+                      "Survey No": selectedFarmCard.card_data.surveyNo,
+                      "Land Status": selectedFarmCard.card_data.landStatus,
+                      "Cultivated Area": `${selectedFarmCard.card_data.cultivatedArea} ${selectedFarmCard.card_data.cultivatedAreaUnit}`,
+                    }} />
+                  </Section>
 
-                      return (
-                        <div key={key} className="flex flex-col p-2 border rounded-xl bg-white shadow-sm hover:shadow-md transition-all">
-                          <span className="text-xs font-bold text-muted-foreground mb-2 px-1">{displayName}</span>
-                          <div className="relative aspect-video bg-muted rounded-lg overflow-hidden border border-border/50 group">
-                            {isVideo ? (
-                              <video 
-                                src={url} 
-                                controls 
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  // Fallback for local/broken links
-                                  e.currentTarget.style.display = 'none';
-                                  e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center text-xs text-muted-foreground p-4 text-center">Video not available<br/>(Local paths blocked)</div>';
-                                }}
-                              />
-                            ) : (
-                              <img 
-                                src={url} 
-                                alt={displayName} 
-                                className="w-full h-full object-cover" 
-                                onError={(e) => {
-                                  // 🚀 Fallback placeholder so it looks nice until Cloudinary is wired up!
-                                  e.currentTarget.src = `https://placehold.co/600x400/f8fafc/94a3b8?text=Image+Not+Available%0A(Local+Device+Path)`;
-                                }}
-                              />
-                            )}
+                  <Section title="Soil & Water Metrics">
+                    <KeyValueGrid data={{
+                      "Soil Type": selectedFarmCard.card_data.soilType,
+                      "Soil pH": selectedFarmCard.card_data.soilPh,
+                      "Soil EC": selectedFarmCard.card_data.soilEc,
+                      "Organic Matter": selectedFarmCard.card_data.organicMatter,
+                      "Water Source": selectedFarmCard.card_data.waterSource,
+                      "Water pH": selectedFarmCard.card_data.waterPh,
+                      "Water TDS": selectedFarmCard.card_data.waterTds,
+                      "Irrigation Method": selectedFarmCard.card_data.irrigationMethod,
+                      "Drip Area": `${selectedFarmCard.card_data.dripArea} ${selectedFarmCard.card_data.dripAreaUnit}`,
+                      "Pump HP": selectedFarmCard.card_data.pumpHp,
+                    }} />
+                  </Section>
+
+                  <Section title="Livestock & Assets">
+                    <KeyValueGrid data={{
+                      "Milch Cows": selectedFarmCard.card_data.milchCows,
+                      "Buffaloes": selectedFarmCard.card_data.buffaloes,
+                      "Draft Animals": selectedFarmCard.card_data.draftAnimals,
+                      "Goats/Sheep/Poultry": selectedFarmCard.card_data.goatsSheepPoultry,
+                      "FYM Generated": selectedFarmCard.card_data.fymGenerated,
+                      "Labour Type": selectedFarmCard.card_data.labourType,
+                    }} />
+                  </Section>
+
+                  <Section title="Yield History">
+                    {selectedFarmCard.card_data.yieldHistory && selectedFarmCard.card_data.yieldHistory.length > 0 ? (
+                      <div className="rounded-md border border-border overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-white">
+                              <TableHead className="font-semibold text-xs whitespace-nowrap">Year</TableHead>
+                              <TableHead className="font-semibold text-xs whitespace-nowrap">Season</TableHead>
+                              <TableHead className="font-semibold text-xs whitespace-nowrap">Crop</TableHead>
+                              <TableHead className="font-semibold text-xs whitespace-nowrap">Area</TableHead>
+                              <TableHead className="font-semibold text-xs whitespace-nowrap">Yield</TableHead>
+                              <TableHead className="font-semibold text-xs whitespace-nowrap">Price/Qtl</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {selectedFarmCard.card_data.yieldHistory.map((yh: any, i: number) => (
+                              <TableRow key={i} className="bg-white">
+                                <TableCell className="text-xs">{yh.year}</TableCell>
+                                <TableCell className="text-xs">{yh.season}</TableCell>
+                                <TableCell className="text-xs font-medium">{yh.cropGrown}</TableCell>
+                                <TableCell className="text-xs">{yh.area} {yh.areaUnit}</TableCell>
+                                <TableCell className="text-xs">{yh.yieldQtl}</TableCell>
+                                <TableCell className="text-xs">₹ {yh.priceQtl}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No yield history available.</p>
+                    )}
+                  </Section>
+
+                  <Section title="Media & Attachments">
+                    {selectedFarmCard.media_urls && Object.keys(selectedFarmCard.media_urls).length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(selectedFarmCard.media_urls).map(([key, rawUrl]) => {
+                          const url = String(rawUrl);
+                          const isVideo = url.match(/\.(mp4|mov|webm)$/i);
+                          const displayName = key.replace(/_/g, ' ').toUpperCase();
+
+                          return (
+                            <div key={key} className="flex flex-col p-2 border rounded-xl bg-white shadow-sm hover:shadow-md transition-all">
+                              <span className="text-xs font-bold text-muted-foreground mb-2 px-1">{displayName}</span>
+                              <div className="relative aspect-video bg-muted rounded-lg overflow-hidden border border-border/50 group">
+                                {isVideo ? (
+                                  <video 
+                                    src={url} 
+                                    controls 
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center text-xs text-muted-foreground p-4 text-center">Video not available<br/>(Local paths blocked)</div>';
+                                    }}
+                                  />
+                                ) : (
+                                  <img 
+                                    src={url} 
+                                    alt={displayName} 
+                                    className="w-full h-full object-cover" 
+                                    onError={(e) => {
+                                      e.currentTarget.src = `https://placehold.co/600x400/f8fafc/94a3b8?text=Image+Not+Available%0A(Local+Device+Path)`;
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              <Button asChild variant="secondary" size="sm" className="w-full mt-2 text-[10px] h-7">
+                                <a href={url} target="_blank" rel="noreferrer">Open Full File</a>
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No media attachments found for this plot.</p>
+                    )}
+                  </Section>
+                </TabsContent>
+
+                <TabsContent value="diaries" className="space-y-4 mt-0">
+                  {farmDiaries.length > 0 ? (
+                    farmDiaries.map(diary => (
+                      <div 
+                        key={diary.id}
+                        onClick={() => { setSelectedFarmDiary(diary); setView('farm_diary_detail'); }}
+                        className="border rounded-xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-all bg-white hover:border-primary group flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <FileText className="h-6 w-6" />
                           </div>
-                          <Button asChild variant="secondary" size="sm" className="w-full mt-2 text-[10px] h-7">
-                            <a href={url} target="_blank" rel="noreferrer">Open Full File</a>
-                          </Button>
+                          <div>
+                            <div className="flex items-center gap-2">
+                               <h4 className="font-bold text-foreground">{diary.farm_name || 'Unnamed Diary'}</h4>
+                               <Badge variant={diary.is_sowing_done ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-800 hover:bg-blue-100 border-blue-200">
+                                 {diary.is_sowing_done ? "Sown" : "Planning"}
+                               </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Area: {diary.plot_area || 0} {diary.plot_area_unit || 'Acres'} • {diary.land_status || 'N/A'}
+                            </p>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">No media attachments found for this plot.</p>
-                )}
-              </Section>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-10 bg-white border border-dashed rounded-xl">
+                      <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-30" />
+                      <p className="text-sm font-semibold text-muted-foreground">No Farm Diaries Found</p>
+                      <p className="text-xs text-muted-foreground mt-1">There are no diaries mapped to this plot yet.</p>
+                    </div>
+                  )}
+                </TabsContent>
 
+              </div>
+            </Tabs>
+          )}
+
+          {/* ============================================================== */}
+          {/* 🚀 NEW VIEW: INDIVIDUAL FARM DIARY DETAILS WITH OBSERVATIONS */}
+          {/* ============================================================== */}
+          {view === 'farm_diary_detail' && selectedFarmDiary && (
+            <div className="p-6 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+               
+               <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                 <Badge className={selectedFarmDiary.is_sowing_done ? "bg-green-100 text-green-800 border-green-200" : "bg-slate-100 text-slate-800 border-slate-200"}>
+                   {selectedFarmDiary.is_sowing_done ? "Sowing Done" : "Pre-Sowing"}
+                 </Badge>
+                 {selectedFarmDiary.sowing_date && (
+                   <Badge variant="outline">Sowing Date: {new Date(selectedFarmDiary.sowing_date).toLocaleDateString()}</Badge>
+                 )}
+               </div>
+
+               <Section title="Plot & Soil Profile">
+                 <KeyValueGrid data={{
+                    "Farm Name": selectedFarmDiary.farm_name,
+                    "Area": `${selectedFarmDiary.plot_area || 0} ${selectedFarmDiary.plot_area_unit}`,
+                    "Land Status": selectedFarmDiary.land_status,
+                    "Soil Type": selectedFarmDiary.soil_type,
+                    "Soil pH": selectedFarmDiary.soil_ph,
+                    "Soil EC (mS/cm)": selectedFarmDiary.soil_ec_ms_cm,
+                    "Organic Matter %": selectedFarmDiary.organic_matter_percentage,
+                    "Drainage": selectedFarmDiary.drainage_condition,
+                    "Test Status": selectedFarmDiary.soil_test_status,
+                 }} />
+               </Section>
+
+               <Section title="Nutrient & Water Metrics">
+                 <KeyValueGrid data={{
+                    "Nitrogen (kg/ha)": selectedFarmDiary.nitrogen_kg_ha,
+                    "Phosphorus (kg/ha)": selectedFarmDiary.phosphorus_kg_ha,
+                    "Potassium (kg/ha)": selectedFarmDiary.potassium_kg_ha,
+                    "Water Source": selectedFarmDiary.water_source,
+                    "Irrigation Method": selectedFarmDiary.irrigation_method,
+                    "Water TDS": selectedFarmDiary.water_tds,
+                    "Water pH": selectedFarmDiary.water_ph,
+                 }} />
+               </Section>
+
+               <Section title="Historical Context">
+                 <KeyValueGrid data={{
+                    "Decision Making Factor": selectedFarmDiary.decision_making_factor,
+                    "Yield History": Array.isArray(selectedFarmDiary.multi_season_yield_history) ? `${selectedFarmDiary.multi_season_yield_history.length} records mapped` : 'None',
+                    "Input Preferences": Object.keys(selectedFarmDiary.historical_input_preferences || {}).length > 0 ? 'Customized' : 'None',
+                 }} />
+               </Section>
+
+               {/* 🚀 NEW SECTION: NESTED CROP OBSERVATIONS */}
+               {/* 🚀 UPGRADED SECTION: CHRONOLOGICAL CROP OBSERVATION ACCORDION */}
+               <Section title="Crop Observation Timeline">
+                 {loadingObservations ? (
+                   <div className="py-8 flex flex-col items-center justify-center text-sm text-muted-foreground border rounded-xl border-dashed">
+                     <Loader2 className="h-6 w-6 animate-spin mb-3 text-primary" /> 
+                     Fetching field observations & timeline...
+                   </div>
+                 ) : observationSessions.length === 0 ? (
+                   <div className="text-center py-6 bg-white border border-dashed rounded-xl">
+                     <p className="text-sm font-semibold text-muted-foreground">No Observations Found</p>
+                     <p className="text-xs text-muted-foreground mt-1">No field visits have been logged for this specific diary yet.</p>
+                   </div>
+                 ) : (
+                   <div className="space-y-4">
+                     <div className="flex items-center gap-2 mb-2">
+                       <Leaf className="h-4 w-4 text-green-600" />
+                       <span className="text-sm font-bold text-foreground">
+                         Tracking Crop: <span className="text-primary">{observationSessions[0]?.master_crops?.crop_name}</span>
+                       </span>
+                     </div>
+                     
+                     <Accordion type="multiple" className="w-full space-y-3">
+                       {sopTemplateStages.map((sopStage) => {
+                         // Find all observations that were logged for this specific stage
+                         const stageSessions = observationSessions.filter(s => s.selected_stage_id === sopStage.stage_id);
+                         const isCompleted = stageSessions.length > 0;
+                         
+                         return (
+                           <AccordionItem key={sopStage.id} value={sopStage.id} className="border border-border/60 rounded-xl bg-white shadow-sm px-2">
+                             <AccordionTrigger className="hover:no-underline py-4 px-3">
+                               <div className="flex items-center justify-between w-full pr-2">
+                                 <div className="flex items-center gap-3">
+                                   <div className={cn(
+                                     "flex items-center justify-center h-8 w-8 rounded-full text-xs font-bold border", 
+                                     isCompleted ? "bg-green-100 text-green-700 border-green-200" : "bg-orange-50 text-orange-600 border-orange-200 opacity-60"
+                                   )}>
+                                     {sopStage.stage_sequence}
+                                   </div>
+                                   <span className={cn("font-bold text-base text-left", !isCompleted && "text-muted-foreground")}>
+                                     {sopStage.master_crop_stages?.stage_name}
+                                   </span>
+                                 </div>
+                                 <Badge variant="outline" className={cn(
+                                   "ml-auto shrink-0", 
+                                   isCompleted ? "border-green-200 bg-green-50 text-green-700" : "border-orange-200 bg-orange-50 text-orange-600"
+                                 )}>
+                                   {isCompleted ? 'Completed' : 'Pending'}
+                                 </Badge>
+                               </div>
+                             </AccordionTrigger>
+                             
+                             <AccordionContent className="pt-2 pb-6 px-3 border-t">
+                               {isCompleted ? (
+                                 <div className="space-y-6 mt-4">
+                                   {stageSessions.map((session, sIdx) => (
+                                     <div key={session.id} className="border rounded-xl bg-slate-50/50 shadow-sm overflow-hidden">
+                                       
+                                       <div className="bg-white p-4 border-b">
+                                         <div className="flex justify-between items-start mb-2">
+                                           <div>
+                                             <h4 className="font-bold text-sm text-foreground">Visit Record #{stageSessions.length - sIdx}</h4>
+                                             <p className="text-xs text-muted-foreground mt-1">Logged: {new Date(session.created_at).toLocaleString()}</p>
+                                           </div>
+                                           <Badge variant="outline" className={cn(
+                                             "font-bold", 
+                                             session.overall_plant_health_score >= 4 ? "border-green-200 text-green-700 bg-green-50" : 
+                                             session.overall_plant_health_score >= 3 ? "border-amber-200 text-amber-700 bg-amber-50" : 
+                                             "border-red-200 text-red-700 bg-red-50"
+                                           )}>
+                                             Health Score: {session.overall_plant_health_score}/5
+                                           </Badge>
+                                         </div>
+                                         
+                                         <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+                                           <div><span className="font-semibold text-muted-foreground">DAS:</span> {session.days_after_sowing_das || 'N/A'}</div>
+                                           <div>
+                                             <span className="font-semibold text-muted-foreground">Action Tier:</span> 
+                                             <span className={cn("ml-1 font-medium", session.action_required_tier === 'Red' ? 'text-red-600' : session.action_required_tier === 'Amber' ? 'text-amber-600' : 'text-green-600')}>
+                                               {session.action_required_tier || 'N/A'}
+                                             </span>
+                                           </div>
+                                           <div className="col-span-2"><span className="font-semibold text-muted-foreground">Yield Potential:</span> {session.expected_yield_potential || 'N/A'}</div>
+                                           {session.executive_notes && <div className="col-span-2 mt-1 p-2 bg-slate-100/50 rounded border text-xs text-slate-700"><span className="font-bold block mb-1">Executive Notes:</span> {session.executive_notes}</div>}
+                                         </div>
+                                       </div>
+                                       
+                                       {session.plant_sample_sets && session.plant_sample_sets.length > 0 && (
+                                         <div className="p-4 bg-transparent">
+                                           <h5 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Plant Samples ({session.plant_sample_sets.length})</h5>
+                                           
+                                           <div className="grid grid-cols-1 gap-4">
+                                             {session.plant_sample_sets.map((sample: any) => (
+                                               <div key={sample.id} className="flex gap-4 bg-white p-3 border rounded-lg shadow-sm">
+                                                 <div className="w-24 h-24 shrink-0 bg-muted rounded-md overflow-hidden border">
+                                                   <img 
+                                                     src={sample.sample_photo_file_path} 
+                                                     alt={`Sample ${sample.sample_set_index}`} 
+                                                     className="w-full h-full object-cover" 
+                                                     onError={(e) => { e.currentTarget.src = 'https://placehold.co/100x100/f8fafc/94a3b8?text=No+Img'; }} 
+                                                   />
+                                                 </div>
+                                                 
+                                                 <div className="flex-1 min-w-0">
+                                                   <p className="font-bold text-sm mb-1 pb-1 border-b">Plant #{sample.sample_set_index}</p>
+                                                   <div className="space-y-1.5 mt-1.5 max-h-24 overflow-y-auto custom-scrollbar pr-1">
+                                                     {sample.sample_parameter_values?.map((param: any) => (
+                                                       <div key={param.id} className="text-xs flex flex-col gap-0.5 mb-1.5">
+                                                         <span className="text-muted-foreground font-medium">{param.master_parameters?.parameter_label}:</span>
+                                                         <span className="font-bold text-foreground">
+                                                           {param.master_parameters?.ui_input_type === 'Upload Image' ? (
+                                                             <a href={param.logged_value_raw} target="_blank" rel="noreferrer" className="text-primary hover:underline">View Attachment</a>
+                                                           ) : (
+                                                             `${param.logged_value_raw} ${param.master_uom?.uom_symbol || ''}`
+                                                           )}
+                                                         </span>
+                                                       </div>
+                                                     ))}
+                                                     {(!sample.sample_parameter_values || sample.sample_parameter_values.length === 0) && (
+                                                       <span className="text-xs text-muted-foreground italic">No parameters logged</span>
+                                                     )}
+                                                   </div>
+                                                 </div>
+                                               </div>
+                                             ))}
+                                           </div>
+                                         </div>
+                                       )}
+                                     </div>
+                                   ))}
+                                 </div>
+                               ) : (
+                                 <div className="py-8 text-center text-muted-foreground bg-slate-50 rounded-xl mt-4 border border-dashed">
+                                   <Clock className="h-6 w-6 mx-auto mb-2 opacity-30" />
+                                   <p className="text-sm font-semibold">Stage Pending</p>
+                                   <p className="text-xs mt-1 max-w-[250px] mx-auto">No field executive observations have been logged for this stage yet.</p>
+                                 </div>
+                               )}
+                             </AccordionContent>
+                           </AccordionItem>
+                         );
+                       })}
+                     </Accordion>
+                   </div>
+                 )}
+               </Section>
             </div>
           )}
 

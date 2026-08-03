@@ -29,30 +29,35 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
   const [selectedSE, setSelectedSE] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All'); 
-  // 🚀 ON-SCREEN FILTERS
   
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }); // 🚀 NEW: Month filter, defaulting to current month!
+  }); 
   
-  // 🚀 EXPORT MODAL STATES
+  // 🚀 EXPORT MODAL STATES (Detailed Raw CSV)
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportMonth, setExportMonth] = useState(() => {
     const now = new Date();
-    // 🚀 Default the export modal to the CURRENT month
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [exportSE, setExportSE] = useState('All');
-  const [exportCategory, setExportCategory] = useState('All'); // New Category export filter
+  const [exportCategory, setExportCategory] = useState('All');
   const [exportLoading, setExportLoading] = useState(false);
+
+  // 🚀 PAYOUT EXPORT MODAL STATES (Consolidated Payout CSV)
+  const [isPayoutExportOpen, setIsPayoutExportOpen] = useState(false);
+  const [payoutExportMonth, setPayoutExportMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [payoutExportLoading, setPayoutExportLoading] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 15;
 
   // 1. Fetch SE List
-  // 1. Fetch SE List (Safely grab false AND null values)
   useEffect(() => {
     if (!userId || !expenseAccess.can_view) return;
     
@@ -60,7 +65,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
       .from('profiles')
       .select('id, name')
       .eq('role', 'SE')
-      .or('is_demo.eq.false,is_demo.is.null') // 🚀 FIXED: Safely excludes true, but keeps real users!
+      .or('is_demo.eq.false,is_demo.is.null') 
       .order('name')
       .then(({ data }) => { 
         if (data) setSeList(data); 
@@ -77,11 +82,9 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
       let startDateStr, endDateStr;
 
       if (selectedDate) {
-        // If user picked a specific date, fetch exactly that day
         startDateStr = `${selectedDate}T00:00:00.000Z`;
         endDateStr = `${selectedDate}T23:59:59.999Z`;
       } else {
-        // 🚀 NEW: Use the selectedMonth filter! (Fallback to current month if they somehow clear it)
         const activeMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
         const [year, month] = activeMonth.split('-');
         
@@ -91,7 +94,6 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
         endDateStr = nextMonth.toISOString();
       }
 
-      // Fetch all records for the time window
       const query = supabase
         .from('expenses')
         .select('*, profiles:se_id(name), shifts:shift_id(start_time, end_time, start_km, end_km, total_distance, start_odo_image, end_odo_image)') 
@@ -111,18 +113,13 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     };
 
     fetchExpenses();
-  }, [selectedDate, selectedMonth, userId, expenseAccess.can_view]); // 🚀 Added selectedMonth here
+  }, [selectedDate, selectedMonth, userId, expenseAccess.can_view]);
 
   // Reset pagination on filter change
-  useEffect(() => setCurrentPage(1), [selectedDate, selectedMonth, selectedSE, statusFilter, categoryFilter]); // 🚀 Added selectedMonth here
+  useEffect(() => setCurrentPage(1), [selectedDate, selectedMonth, selectedSE, statusFilter, categoryFilter]); 
 
-
-
-  // 3. Client-Side Instant Filters
   // 3. Client-Side Instant Filters
   const filteredData = expenses.filter((exp) => {
-    // 🚀 NEW: Ensure the expense belongs to a real executive from our list!
-    // (We check length > 0 so the table doesn't flash empty while loading)
     const isRealSE = seList.length === 0 || seList.some(se => se.id === exp.se_id);
     if (!isRealSE) return false;
 
@@ -134,7 +131,6 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     return matchesSE && matchesStatus && matchesCategory;
   });
   
-
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE) || 1;
   const paginatedData = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
@@ -163,7 +159,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     return <Badge variant="outline" className={styles[status] || 'bg-muted'}>{status}</Badge>;
   };
 
-  // 🚀 ADVANCED CSV EXPORT (By Month, SE, and Category)
+  // 🚀 ADVANCED CSV EXPORT (Raw Expense Details)
   const executeExport = async () => {
     setExportLoading(true);
 
@@ -179,27 +175,16 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
       .lt('date', endDate)
       .order('date', { ascending: true });
 
-    if (exportSE !== 'All') {
-      query = query.eq('se_id', exportSE);
-    }
-    
-    if (exportCategory !== 'All') {
-      query = query.eq('category', exportCategory);
-    }
+    if (exportSE !== 'All') query = query.eq('se_id', exportSE);
+    if (exportCategory !== 'All') query = query.eq('category', exportCategory);
 
     const { data, error } = await query;
     setExportLoading(false);
 
-    if (error || !data) {
-      return toast({ title: 'Export Failed', description: error?.message, variant: 'destructive' });
-    }
+    if (error || !data) return toast({ title: 'Export Failed', description: error?.message, variant: 'destructive' });
 
-    // Filter out deleted/demo users from the export
     const cleanData = data.filter(exp => seList.some(se => se.id === exp.se_id));
-
-    if (cleanData.length === 0) {
-      return toast({ title: 'No Data', description: 'No expenses found for these exact filters.' });
-    }
+    if (cleanData.length === 0) return toast({ title: 'No Data', description: 'No expenses found for these exact filters.' });
 
     const headers = ['Date', 'Executive Name', 'Category', 'Amount (INR)', 'Status', 'Remarks'];
     const csvRows = [headers.join(',')];
@@ -224,10 +209,132 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
     const seName = exportSE === 'All' ? 'All_SEs' : seList.find(s => s.id === exportSE)?.name?.replace(/\s+/g, '_');
     const catName = exportCategory === 'All' ? 'All_Cats' : exportCategory.replace(/[^a-zA-Z0-9]/g, '');
     
-    link.download = `Expenses_${exportMonth}_${seName}_${catName}.csv`;
+    link.download = `Expense_Details_${exportMonth}_${seName}_${catName}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
     setIsExportOpen(false);
+  };
+
+  // 🚀 CONSOLIDATED PAYOUT CSV EXPORT (With TA & DA Separated)
+  const executePayoutExport = async () => {
+    setPayoutExportLoading(true);
+
+    const [year, month] = payoutExportMonth.split('-');
+    const startDate = `${payoutExportMonth}-01T00:00:00.000Z`;
+    const nextMonth = new Date(parseInt(year), parseInt(month), 1);
+    const endDate = nextMonth.toISOString();
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*, profiles:se_id(name), shifts:shift_id(start_km, end_km, total_distance)') // 🚀 Fetch linked shift data
+      .eq('status', 'Approved') 
+      .gte('date', startDate)
+      .lt('date', endDate);
+
+    setPayoutExportLoading(false);
+
+    if (error || !data) {
+      return toast({ title: 'Export Failed', description: error?.message, variant: 'destructive' });
+    }
+
+    const cleanData = data.filter(exp => seList.some(se => se.id === exp.se_id));
+
+    if (cleanData.length === 0) {
+      return toast({ title: 'No Data', description: `No Approved expenses found for ${payoutExportMonth}.` });
+    }
+
+    // Group data by SE and split TA/DA dynamically
+    const payouts: Record<string, any> = {};
+    
+    cleanData.forEach(exp => {
+      const seName = exp.profiles?.name || 'Unknown SE';
+      if (!payouts[seName]) {
+        payouts[seName] = { 
+          name: seName, 
+          'Total TA': 0, // 🚀 SEPARATED
+          'Total DA': 0, // 🚀 SEPARATED
+          'Travelling': 0, 
+          'Food': 0, 
+          'Misc': 0, 
+          'Other': 0,
+          Total: 0 
+        };
+      }
+      
+      const cat = exp.category as string;
+      const amt = Number(exp.amount) || 0;
+      
+      if (cat === 'TA/DA') {
+        let distanceUsed = 0;
+        if (exp.shifts) {
+          let odoDistance = 0;
+          if (exp.shifts.start_km && exp.shifts.end_km) {
+            const s = parseFloat(exp.shifts.start_km.replace(/[^0-9.]/g, ''));
+            const e = parseFloat(exp.shifts.end_km.replace(/[^0-9.]/g, ''));
+            if (!isNaN(s) && !isNaN(e) && e > s) {
+              odoDistance = parseFloat((e - s).toFixed(1));
+            }
+          }
+          distanceUsed = odoDistance > 0 ? odoDistance : Number(exp.shifts.total_distance || 0);
+        }
+
+        // Standard logic: DA applies if distance > 60
+        let daValue = distanceUsed > 60 ? 150 : 0;
+        
+        // Handle admin overrides from the ExpenseActionSheet
+        if (exp.remarks && exp.remarks.includes('DA=No')) daValue = 0;
+        if (exp.remarks && exp.remarks.includes('TA=No')) daValue = amt; // If no TA, whole amount is DA
+
+        let taValue = amt - daValue;
+
+        // Failsafe in case manual edits made DA > Total Amount
+        if (taValue < 0) {
+          taValue = amt;
+          daValue = 0;
+        }
+
+        payouts[seName]['Total TA'] += taValue;
+        payouts[seName]['Total DA'] += daValue;
+
+      } else if (payouts[seName][cat] !== undefined) {
+        payouts[seName][cat] += amt;
+      } else {
+        payouts[seName]['Other'] += amt;
+      }
+      
+      payouts[seName].Total += amt;
+    });
+
+    // Build the CSV Document with the split headers
+    const headers = ['Executive Name', 'Total TA', 'Total DA', 'Total Travelling', 'Total Food', 'Total Misc', 'Other Allowances', 'Grand Total Payout (INR)'];
+    const csvRows = [headers.join(',')];
+    
+    Object.keys(payouts).sort().forEach(name => {
+      const p = payouts[name];
+      const row = [
+        `"${name}"`,
+        p['Total TA'].toFixed(2),
+        p['Total DA'].toFixed(2),
+        p['Travelling'].toFixed(2),
+        p['Food'].toFixed(2),
+        p['Misc'].toFixed(2),
+        p['Other'].toFixed(2),
+        p.Total.toFixed(2)
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    // Download the CSV file
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `SE_Consolidated_Payouts_${payoutExportMonth}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    
+    toast({ title: 'Success', description: 'Consolidated payout report downloaded successfully.' });
+    setIsPayoutExportOpen(false);
   };
 
   if (authLoading || permLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -260,13 +367,25 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
             </p>
           </div>
 
-          <Button 
-            variant="outline" 
-            className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
-            onClick={() => setIsExportOpen(true)}
-          >
-            <Download className="h-4 w-4 mr-2" /> Export CSV
-          </Button>
+          <div className="flex gap-2 w-full lg:w-auto">
+            {/* 🚀 NEW PAYOUT EXPORT BUTTON - OPENS MODAL */}
+            <Button 
+              variant="outline" 
+              className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 flex-1 lg:flex-none"
+              onClick={() => setIsPayoutExportOpen(true)}
+            >
+              <Download className="h-4 w-4 mr-2" /> Export SE Payouts
+            </Button>
+
+            {/* Existing Detailed Export Button */}
+            <Button 
+              variant="outline" 
+              className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200 flex-1 lg:flex-none"
+              onClick={() => setIsExportOpen(true)}
+            >
+              <Download className="h-4 w-4 mr-2" /> Details CSV
+            </Button>
+          </div>
         </div>
 
         {/* Filters Bar */}
@@ -291,7 +410,7 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
                 value={selectedMonth}
                 onChange={(e) => {
                   setSelectedMonth(e.target.value);
-                  setSelectedDate(''); // 🚀 Clear specific date if they pick a whole month
+                  setSelectedDate(''); // Clear specific date if they pick a whole month
                 }}
                 className="pl-9 h-9 min-w-[150px]"
                 title="Search by month"
@@ -413,13 +532,45 @@ const ExpensesPage = ({ onLogout }: { onLogout: () => void }) => {
         </div>
       </div>
 
-      {/* Export CSV Modal */}
+      {/* 🚀 NEW: EXPORT SE PAYOUTS MODAL */}
+      <Dialog open={isPayoutExportOpen} onOpenChange={setIsPayoutExportOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export SE Payouts Report</DialogTitle>
+            <DialogDescription>
+              Select the month to generate the consolidated payout summary for all Sales Executives.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">Select Month *</label>
+              <Input 
+                type="month" 
+                value={payoutExportMonth} 
+                onChange={e => setPayoutExportMonth(e.target.value)} 
+                required 
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsPayoutExportOpen(false)}>Cancel</Button>
+            <Button onClick={executePayoutExport} disabled={payoutExportLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+              {payoutExportLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+              Download Payout Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Original Detailed Export CSV Modal */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Export Expenses to CSV</DialogTitle>
+            <DialogTitle>Export Detailed Expenses CSV</DialogTitle>
             <DialogDescription>
-              Filter the exact records you want to download.
+              Filter the exact raw records you want to download.
             </DialogDescription>
           </DialogHeader>
           
