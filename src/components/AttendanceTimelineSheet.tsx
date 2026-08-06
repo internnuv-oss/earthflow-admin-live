@@ -68,6 +68,7 @@ interface Props {
 
 export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props) => {
   const [livePath, setLivePath] = useState<{lat: number, lng: number}[]>([]);
+  const [snappedPath, setSnappedPath] = useState<{lat: number, lng: number}[]>([]); // 🚀 NEW: State for perfectly curved roads
   const [dynamicEvents, setDynamicEvents] = useState<any[]>([]);
   const [routeName, setRouteName] = useState<string>('Loading...');
   
@@ -78,6 +79,9 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
   useEffect(() => {
     if (!open || !shift) return;
 
+    setLivePath([]);
+    setSnappedPath([]);
+
     const fetchExtraData = async () => {
       // 1. Fetch High-Res GPS Location Path
       const { data: locs } = await supabase
@@ -86,7 +90,42 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
         .eq('shift_id', shift.id)
         .order('timestamp', { ascending: true });
         
-      if (locs && locs.length > 0) setLivePath(locs);
+      if (locs && locs.length > 0) {
+        setLivePath(locs);
+
+        // 🚀 NEW: GOOGLE SNAP TO ROADS API INTEGRATION
+        try {
+          const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+          if (apiKey) {
+            let fullSnappedPoints: {lat: number, lng: number}[] = [];
+            
+            // Google Roads API has a maximum limit of 100 points per request.
+            // We chunk the path into arrays of 100 to process the entire route.
+            for (let i = 0; i < locs.length; i += 100) {
+              const chunk = locs.slice(i, i + 100);
+              const pathString = chunk.map((p: any) => `${p.lat},${p.lng}`).join('|');
+              
+              // interpolate=true makes Google automatically generate the smooth curves between your points
+              const res = await fetch(`https://roads.googleapis.com/v1/snapToRoads?path=${pathString}&interpolate=true&key=${apiKey}`);
+              const data = await res.json();
+              
+              if (data.snappedPoints) {
+                const chunkSnapped = data.snappedPoints.map((sp: any) => ({
+                  lat: sp.location.latitude,
+                  lng: sp.location.longitude
+                }));
+                fullSnappedPoints = [...fullSnappedPoints, ...chunkSnapped];
+              }
+            }
+            
+            if (fullSnappedPoints.length > 0) {
+              setSnappedPath(fullSnappedPoints);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch snapped roads:', error);
+        }
+      }
 
       // 2. Fetch ALL Routes for this SE
       const { data: allRoutes } = await supabase
@@ -121,7 +160,7 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
       const farmers = farmersData as any[] || []; 
       setAllFarmers(farmers); 
 
-      // 4. 🚀 NEW: Fetch Farm Cards directly from DB to inject into timeline
+      // 4. Fetch Farm Cards directly from DB to inject into timeline
       const { data: farmCardsData } = await (supabase as any)
         .from('farm_cards')
         .select('id, farmer_id, created_at, status, card_data')
@@ -175,7 +214,7 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
         }
       });
 
-      // --- C. 🚀 INJECT FARM CARDS ---
+      // --- C. INJECT FARM CARDS ---
       farmCards.forEach(fc => {
         if (!fc.created_at) return;
         const cardDateObj = new Date(fc.created_at);
@@ -185,7 +224,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
           let eventTime = cardDateObj.getTime();
           if (eventTime <= shiftStartTime) eventTime = shiftStartTime + 60000 + (injectedEvents.length * 1000); 
 
-          // Cross-reference with our local farmers array to get the name and village
           const matchedFarmer = farmers.find(f => f.id === fc.farmer_id);
           const farmerName = matchedFarmer?.full_name || fc.card_data?.farmerName || 'Unknown Farmer';
           const village = fc.card_data?.village || matchedFarmer?.village || 'Field Visit';
@@ -222,7 +260,7 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
       case 'expense': return { icon: Receipt, color: 'text-amber-600', bg: 'bg-amber-100' };
       case 'visit': return { icon: Users, color: 'text-purple-600', bg: 'bg-purple-100' }; 
       case 'fspp': return { icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-100' }; 
-      case 'farm_card': return { icon: Leaf, color: 'text-amber-600', bg: 'bg-amber-100' }; // 🚀 NEW FARM CARD ICON
+      case 'farm_card': return { icon: Leaf, color: 'text-amber-600', bg: 'bg-amber-100' }; 
       default: return { icon: ClipboardList, color: 'text-blue-600', bg: 'bg-blue-100' };
     }
   };
@@ -271,7 +309,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     }
   };
 
-  // 🚀 Filter out duplicates: removes raw entries that are handled perfectly by our dynamic systems!
   const rawEvents = (Array.isArray(shift.events) ? shift.events : [])
     .filter((e: any) => 
       e.title !== 'General Visit' && 
@@ -294,7 +331,8 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
     .map((item: any) => (item?.location?.lat && item?.location?.lng) ? { lat: Number(item.location.lat), lng: Number(item.location.lng) } : null)
     .filter((pos: any) => pos !== null && !isNaN(pos.lat) && !isNaN(pos.lng));
 
-  const displayPath = livePath.length > 0 ? livePath : fallbackPath;
+  // 🚀 Prioritize the Snapped Path over the raw Live Path
+  const displayPath = snappedPath.length > 0 ? snappedPath : (livePath.length > 0 ? livePath : fallbackPath);
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -370,8 +408,9 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                 <h4 className="text-sm font-bold flex items-center gap-2">
                   <MapIcon className="h-4 w-4 text-primary" /> GPS Travel Route
                 </h4>
+                {/* 🚀 Updated UI Badge for Map Accuracy State */}
                 <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider">
-                  {livePath.length > 0 ? 'Live Telemetry Path' : 'Event Points Path'}
+                  {snappedPath.length > 0 ? 'Snapped to Roads (HD)' : (livePath.length > 0 ? 'Raw GPS Telemetry' : 'Event Points Path')}
                 </span>
               </div>
               <div className="h-[250px] w-full bg-muted/10 relative">
@@ -385,7 +424,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
               <div className="text-center py-10 text-muted-foreground">No activities logged for this shift yet.</div>
             ) : (
               events.map((item: any, index: number) => {
-                // 🚀 Flag 'farm_card' as a Farmer Event so it receives the intelligent Route Mismatch checks!
                 const isFarmerEvent = item.title?.includes('Farmer') || item.type === 'enrollment' || item.type === 'draft' || item.type === 'visit' || item.type === 'fspp' || item.type === 'farm_card';
                 
                 let rawLoc = item.location;
@@ -447,7 +485,6 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                           </Badge>
                         )}
 
-                        {/* 🚀 Render the new Farm Card Badge */}
                         {item.type === 'farm_card' && (
                           <Badge variant="secondary" className="shrink-0 max-w-fit bg-amber-100 text-amber-700 hover:bg-amber-100 text-[9px] px-2 py-0 border-amber-200 uppercase tracking-wider font-bold">
                             Farm Card
