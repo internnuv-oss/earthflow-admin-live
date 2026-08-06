@@ -21,6 +21,7 @@ import ShiftsPage from '@/pages/ShiftsPage';
 import FarmDiaryMasters from './FarmDiaryMasters';
 import FsppApprovals from './FsppApprovals';
 import RetailAdminPage from './RetailAdminPage';
+import FarmDiaryApprovals from './FarmDiaryPage';
 
 const Index = () => {
   const { session, loading } = useAuth();
@@ -63,6 +64,7 @@ const Index = () => {
       <Route path="/fspp-approvals" element={guard(<FsppApprovals onLogout={logout} />)} />
       <Route path="/roles" element={guard(<RolesPage onLogout={logout} />)} />
       <Route path="/retail" element={guard(<RetailAdminPage onLogout={logout} />)} />
+      <Route path="/farm-diary-approvals" element={guard(<FarmDiaryApprovals onLogout={logout} />)} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>
