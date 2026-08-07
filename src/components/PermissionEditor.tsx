@@ -13,7 +13,7 @@ interface Permission {
 }
 
 // 🚀 FIXED: Added 'routes' to your modules matrix array
-const MODULES = ['farmers', 'dealers', 'distributors', 'fpos', 'sales_executives', 'routes','attendance','expenses','locations','shifts','farm_diary_masters','fspp_approvals', 'retail'];
+const MODULES = ['farmers', 'dealers', 'distributors', 'fpos', 'sales_executives', 'routes','attendance','expenses','locations','shifts','farm_diary_masters','fspp_approvals', 'retail', 'farm_diary_approvals'];
 
 export const PermissionEditor = ({ userId, onSave }: { userId: string, onSave: () => void }) => {
   const [permissions, setPermissions] = useState<Permission[]>([]);

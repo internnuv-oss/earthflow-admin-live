@@ -26,6 +26,7 @@ const WEB_MODULES = [
   { key: 'farm_diary_masters', label: 'Farm Diary & SOPs' },
   { key: 'fspp_approvals', label: 'FSPP Approvals' },
   { key: 'retail', label: 'Retail & Inventory' },
+  { key: 'farm_diary_approvals', label: 'Farm Diary' },
 ];
 
 const MOBILE_MODULES = [
