@@ -43,7 +43,7 @@ const navItems = [
   { to: '/farm-diary-masters', label: 'Farm Diary Masters', icon: FileText, module: 'farm_diary_masters' },
   { to: '/fspp-approvals', label: 'FSPP Approvals', icon: FileText, module: 'fspp_approvals' },
   { to: '/retail', label: 'Retail & Inventory', icon: Store, module: 'retail' },
-  { to: '/farm-diary', label: 'Farm Diary', icon: FileText, module: 'farm_diary' },
+  { to: '/farm-diary-approvals', label: 'Farm Diary', icon: FileText, module: 'farm_diary_approvals' },
 ];
 
 const settingsChildren = [
