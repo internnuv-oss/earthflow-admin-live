@@ -18,20 +18,15 @@ interface RoutesPageProps {
 
 const ITEMS_PER_PAGE = 10; 
 
-// 🚀 SMART EXTRACTOR: Grabs standard and manually typed "Other Villages" from a route
-// 🚀 FIXED: Aggregates villages from the standard "Route" row AND the custom "Other Route" row
 const extractAllRouteVillages = (route: any): string[] => {
   let vills: string[] = [];
   
-  // 1. Extract from standard "Route" row arrays inside locations
   if (route.locations && Array.isArray(route.locations)) {
     route.locations.forEach((loc: any) => {
-      // Standard route villages dropdown array
       if (loc.villages && Array.isArray(loc.villages)) {
         vills.push(...loc.villages);
       }
       
-      // If "Other Route" villages are saved inside individual location objects
       const locOther = loc.otherVillages || loc.other_villages || loc.other_route_villages;
       if (Array.isArray(locOther)) {
         vills.push(...locOther);
@@ -41,7 +36,6 @@ const extractAllRouteVillages = (route: any): string[] => {
     });
   }
 
-  // 2. Extract from the Route directly (If "Other Route" row is its own top-level column)
   const routeOther = route.otherVillages || route.other_villages || route.other_route_villages || route.other_route;
   if (Array.isArray(routeOther)) {
     vills.push(...routeOther);
@@ -49,7 +43,6 @@ const extractAllRouteVillages = (route: any): string[] => {
     vills.push(...routeOther.split(',').map((v: string) => v.trim()).filter(Boolean));
   }
 
-  // Deduplicate using Set to ensure that if a village accidentally appears in both, it counts as 1
   return Array.from(new Set(vills));
 };
 
@@ -87,8 +80,6 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     setLoading(true);
     
     try {
-      // 1. Fetch SE Profiles
-      // 🚀 FIXED: Added filter to exclusively select real executives where is_demo is false or null
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select(`id, name, is_demo, routes!routes_se_id_fkey ( * )`)
@@ -98,8 +89,6 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
 
       if (profilesError) throw profilesError;
 
-      // 🚀 2. BYPASS SUPABASE 1,000 ROW LIMIT
-      // Safely fetch ALL farmers and drafts in batches to guarantee no data is dropped
       let allFarmers: any[] = [];
       let allDrafts: any[] = [];
       let from = 0;
@@ -132,7 +121,6 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         from += step;
       }
 
-      // 3. Group all actual ground-truth farmer villages by SE
       const actualVillagesBySE = new Map<string, Set<string>>();
       
       allFarmers.forEach(f => {
@@ -148,7 +136,6 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         if (v) actualVillagesBySE.get(d.se_id)!.add(v);
       });
 
-      // 4. Format SE list and inject "Others (Out of Route)" if needed
       const formatted = (profilesData || []).map((se: any) => {
         const rawRoutes = se.routes || [];
         const sortedRoutes = [...rawRoutes].sort((a: any, b: any) => 
@@ -247,53 +234,52 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
     try {
       let fetchedFarmers: any[] = [];
       let fetchedDrafts: any[] = [];
-      let fetchedFarmCards: any[] = []; // 🚀 NEW: Array to hold all transactional farm cards
+      let fetchedFarmCards: any[] = [];
+      let fetchedFarmDiaries: any[] = []; // 🚀 NEW: Array for Farm Diaries
 
-      // 1. Fetch ALL Real Farmers (Submitted) in batches
       let from = 0;
       const step = 1000;
+      
+      // 1. Fetch Farmers
       while (true) {
-        const { data, error } = await supabase
-          .from('farmers')
-          .select('*')
-          .range(from, from + step - 1);
-        
+        const { data, error } = await supabase.from('farmers').select('*').range(from, from + step - 1);
         if (error) throw error;
         if (data && data.length > 0) fetchedFarmers.push(...data);
         if (!data || data.length < step) break;
         from += step;
       }
 
-      // 2. Fetch ALL Draft Farmers in batches
+      // 2. Fetch Drafts
       from = 0;
       while (true) {
-        const { data, error } = await supabase
-          .from('drafts')
-          .select('*')
-          .eq('entity_type', 'farmer')
-          .range(from, from + step - 1);
-          
+        const { data, error } = await supabase.from('drafts').select('*').eq('entity_type', 'farmer').range(from, from + step - 1);
         if (error) throw error;
         if (data && data.length > 0) fetchedDrafts.push(...data);
         if (!data || data.length < step) break;
         from += step;
       }
 
-      // 🚀 3. NEW: Fetch ALL Farm Cards in batches to bypass the 1000 limit
+      // 3. Fetch Farm Cards
       from = 0;
       while (true) {
-        const { data, error } = await supabase
-          .from('farm_cards')
-          .select('id, se_id, status')
-          .range(from, from + step - 1);
-          
+        const { data, error } = await supabase.from('farm_cards').select('id, se_id, status').range(from, from + step - 1);
         if (error) throw error;
         if (data && data.length > 0) fetchedFarmCards.push(...data);
         if (!data || data.length < step) break;
         from += step;
       }
 
-      // 4. Format Drafts exactly like the main list page maps them
+      // 🚀 4. NEW: Fetch ALL Farm Diaries via farmer_id relation
+      from = 0;
+      while (true) {
+        const { data, error } = await supabase.from('farm_diary').select('id, farmer_id').range(from, from + step - 1);
+        if (error) throw error;
+        if (data && data.length > 0) fetchedFarmDiaries.push(...data);
+        if (!data || data.length < step) break;
+        from += step;
+      }
+
+      // Format Drafts
       const formattedDrafts = fetchedDrafts.map((draft: any) => {
         const d = draft.draft_data || {};
         return {
@@ -320,20 +306,26 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         };
       });
 
-      // 5. Build the column data by anchoring directly to the SE profiles in your list
+      // 🚀 Map farmer_id to se_id for Diary grouping
+      const farmerToSE = new Map<string, string>();
+      fetchedFarmers.forEach(f => farmerToSE.set(f.id, f.se_id));
+      fetchedDrafts.forEach(d => farmerToSE.set(d.entity_id, d.se_id));
+
       const seEntities = seList.map((se) => {
         const seFarmers = fetchedFarmers.filter(f => f.se_id === se.id);
         const seDrafts = formattedDrafts.filter(d => d.se_id === se.id);
         
         const combinedFarmersForSE = [...seFarmers, ...seDrafts];
 
-        // 🚀 NEW: Calculate detailed metrics directly from the fetched database records
         const seCards = fetchedFarmCards.filter(card => card.se_id === se.id);
         const detailedFarmCardMetrics = {
           total: seCards.length,
           drafts: seCards.filter(c => c.status === 'DRAFT').length,
           completed: seCards.filter(c => c.status !== 'DRAFT').length
         };
+
+        // 🚀 Count Farm Diaries specifically mapped to this SE's farmers
+        const seDiariesCount = fetchedFarmDiaries.filter(diary => farmerToSE.get(diary.farmer_id) === se.id).length;
 
         const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
         const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
@@ -342,11 +334,11 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
           name: se.name || 'Unknown SE', 
           villageCount: uniqueSeVillages.length, 
           farmers: combinedFarmersForSE,
-          externalFarmCardCount: detailedFarmCardMetrics // 🚀 Pass object to the table
+          externalFarmCardCount: detailedFarmCardMetrics,
+          externalFarmDiaryCount: seDiariesCount // 🚀 Pass count to Analytics Table
         };
       });
 
-      
       setAnalyticsData(seEntities);
     } catch (error: any) {
       toast({ title: 'Analytics Error', description: error.message, variant: 'destructive' });
@@ -565,8 +557,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
       </Dialog>
 
       <Dialog open={isGlobalMapOpen} onOpenChange={setIsGlobalMapOpen}>
-        {/* 🚀 FIX: Added aria-describedby={undefined} to silence the accessibility warning */}
-      <DialogContent aria-describedby={undefined} className="max-w-[95vw] w-full max-h-[95vh] h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-[95vw] w-full max-h-[95vh] h-[90vh] overflow-hidden flex flex-col p-0">
            <DialogHeader className="px-6 py-4 border-b bg-muted/30 shrink-0">
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <MapIcon className="h-6 w-6 text-emerald-600" /> Global Territory Map

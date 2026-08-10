@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import AppLayout from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Loader2, Shield, Download, Search, BookOpen, MapPin, User, Leaf, UserCircle, ChevronRight, Clock, Calendar as CalendarIcon } from 'lucide-react';
+import { Loader2, Shield, Download, Search, BookOpen, MapPin, User, Leaf, UserCircle, Clock, Calendar as CalendarIcon, CalendarClock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -30,8 +30,8 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
   const [cropsList, setCropsList] = useState<{id: string, name: string}[]>([]);
   const [stagesList, setStagesList] = useState<{id: string, name: string}[]>([]);
   
-  // Mapping of "CropID_StageID" -> DAS value for forecasting
-  const [sopDasMap, setSopDasMap] = useState<Record<string, number>>({});
+  // Mapping data for upcoming events calculation
+  const [cropStagesMap, setCropStagesMap] = useState<Record<string, any[]>>({});
 
   // ON-SCREEN FILTERS
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,7 +54,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
   const [sopTemplateStages, setSopTemplateStages] = useState<any[]>([]);
   const [loadingObservations, setLoadingObservations] = useState(false);
 
-  // 1. Fetch Master Data & SOP DAS Map
+  // 1. Fetch Master Data & SOP Arrays
   useEffect(() => {
     if (!userId || !diaryAccess.can_view) return;
 
@@ -67,19 +67,33 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
     supabase.from('master_crop_stages').select('id, stage_name').order('stage_name')
       .then(({ data }) => { if (data) setStagesList(data.map(s => ({ id: s.id, name: s.stage_name }))); });
 
+    // Fetch SOP logic and build arrays for calculating the "Upcoming Event"
     supabase.from('sop_crop_stages')
-      .select('crop_id, stage_id, sop_applications ( das )')
+      .select('crop_id, stage_id, stage_sequence, master_crop_stages ( stage_name ), sop_applications ( das )')
       .then(({ data }) => {
         if (data) {
-          const newMap: Record<string, number> = {};
+          const stageMap: Record<string, any[]> = {};
+
           data.forEach(stage => {
             const apps = stage.sop_applications || [];
             if (apps.length > 0) {
               const minDas = Math.min(...apps.map((a: any) => Number(a.das)));
-              newMap[`${stage.crop_id}_${stage.stage_id}`] = minDas;
+              if (!stageMap[stage.crop_id]) stageMap[stage.crop_id] = [];
+              stageMap[stage.crop_id].push({
+                stage_id: stage.stage_id,
+                stage_sequence: stage.stage_sequence || 0,
+                stage_name: stage.master_crop_stages?.stage_name || 'Unknown',
+                das: minDas
+              });
             }
           });
-          setSopDasMap(newMap);
+
+          // Sort stages logically by SOP sequence mapping so we always grab the true "next" stage
+          Object.keys(stageMap).forEach(k => {
+            stageMap[k].sort((a, b) => a.stage_sequence - b.stage_sequence);
+          });
+
+          setCropStagesMap(stageMap);
         }
       });
   }, [userId, diaryAccess.can_view]);
@@ -108,10 +122,21 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
     fetchDiaries();
   }, [userId, diaryAccess.can_view, toast]);
 
+  // UTILITY: Get Crop ID dynamically from Farm Name string
+  const getCropIdFromName = (farmName: string | null) => {
+    if (!farmName) return null;
+    const match = cropsList.find(c => c.name.toLowerCase() === farmName.toLowerCase());
+    return match?.id || null;
+  };
+
   // 3. Fetch Deep Observation Details for Slide-out Sheet
   useEffect(() => {
     if (selectedDiary && isSheetOpen) {
       setLoadingObservations(true);
+      
+      // Farm Name is the Crop Name -> Map to master_crops ID
+      const targetCropId = getCropIdFromName(selectedDiary.farm_name);
+
       supabase.from('crop_observation_sessions')
         .select(`
           id, created_at, overall_plant_health_score, expected_yield_potential, action_required_tier, executive_notes, days_after_sowing_das,
@@ -129,10 +154,10 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
           const sessions = data || [];
           setObservationSessions(sessions);
           
-          if (sessions.length > 0 && sessions[0].selected_crop_id) {
+          if (targetCropId) {
             const { data: stagesData } = await supabase.from('sop_crop_stages')
-               .select(`id, stage_sequence, chemical_recommendation_and_dosage, stage_id, master_crop_stages ( stage_name )`)
-               .eq('crop_id', sessions[0].selected_crop_id)
+               .select(`id, stage_sequence, chemical_recommendation_and_dosage, stage_id, master_crop_stages ( stage_name ), sop_applications ( das )`)
+               .eq('crop_id', targetCropId)
                .order('stage_sequence', { ascending: true });
             setSopTemplateStages(stagesData || []);
           } else {
@@ -141,20 +166,77 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
           setLoadingObservations(false);
         });
     }
-  }, [selectedDiary, isSheetOpen]);
+  }, [selectedDiary, isSheetOpen, cropsList]);
 
   useEffect(() => setCurrentPage(1), [searchTerm, selectedSE, selectedCrop, selectedStage, forecastStart, forecastEnd]); 
 
-  // ADVANCED CLIENT-SIDE FILTERING (INCLUDING FORECAST MATH)
-  // 🚀 ADVANCED CLIENT-SIDE FILTERING (FIXED FOR FORECASTING)
-  const filteredData = diaries.filter((diary) => {
-    const sessions = diary.crop_observation_sessions || [];
-    const diarySEId = diary.farmers?.se_id;
+  // 🚀 HYBRID HELPER: Uses Sequence if there are visits, uses Calendar Date if NO visits yet
+  const getUpcomingStage = (diary: any) => {
+    if (!diary.is_sowing_done || !diary.sowing_date) return null;
     
+    // Farm Name represents the Crop -> Extract specific crop ID
+    const cropId = getCropIdFromName(diary.farm_name);
+    if (!cropId) return null; 
+
+    const stages = cropStagesMap[cropId] || [];
+    if (stages.length === 0) return null;
+
+    const sessions = diary.crop_observation_sessions || [];
+    const completedStageIds = new Set(sessions.map((s: any) => s.selected_stage_id));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sowingDate = new Date(diary.sowing_date);
+    sowingDate.setHours(0, 0, 0, 0);
+
+    let nextStage;
+
+    if (sessions.length > 0) {
+      // SCENARIO 1: Executive HAS visited. 
+      // Find the highest sequence completed and strictly show the one after it.
+      let maxCompletedSeq = -1;
+      stages.forEach(s => {
+        if (completedStageIds.has(s.stage_id) && s.stage_sequence > maxCompletedSeq) {
+          maxCompletedSeq = s.stage_sequence;
+        }
+      });
+      nextStage = stages.find(s => s.stage_sequence > maxCompletedSeq);
+    } else {
+      // SCENARIO 2: NO visits yet. 
+      // Calculate target dates and find the first stage whose target date is on or after today.
+      nextStage = stages.find(s => {
+        const targetDate = new Date(sowingDate);
+        targetDate.setDate(targetDate.getDate() + s.das);
+        return targetDate >= today;
+      });
+      
+      // Fallback: If all expected stage dates are already strictly in the past, 
+      // default back to showing the very first stage so it registers as overdue.
+      if (!nextStage) {
+        nextStage = stages[0];
+      }
+    }
+
+    // If they have completed the final stage in the SOP
+    if (!nextStage) {
+      return { stage_id: 'COMPLETED', name: 'All Stages Completed', date: null, isOverdue: false };
+    }
+
+    const date = new Date(sowingDate);
+    date.setDate(date.getDate() + nextStage.das);
+    const isOverdue = date < today;
+
+    return { stage_id: nextStage.stage_id, name: nextStage.stage_name, date, isOverdue };
+  };
+
+  // ADVANCED FILTERING: Stage and Forecast strictly apply to the Upcoming Event!
+  const filteredData = diaries.filter((diary) => {
+    const diarySEId = diary.farmers?.se_id;
     const matchesSE = selectedSE === 'All' || diarySEId === selectedSE;
     
-    // We know it's a Groundnut farm if they've logged at least one previous observation for it
-    const matchesCrop = selectedCrop === 'All' || sessions.some((s: any) => s.selected_crop_id === selectedCrop);
+    const diaryCropId = getCropIdFromName(diary.farm_name);
+    const matchesCrop = selectedCrop === 'All' || diaryCropId === selectedCrop;
     
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = searchTerm === '' || 
@@ -162,40 +244,23 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
       (diary.farmers?.full_name || '').toLowerCase().includes(searchLower) ||
       (diary.farmers?.village || '').toLowerCase().includes(searchLower);
 
-    let matchesForecast = true;
+    const upcoming = getUpcomingStage(diary);
+
     let matchesStage = true;
+    if (selectedStage !== 'All') {
+      matchesStage = upcoming !== null && upcoming.stage_id === selectedStage;
+    }
 
-    // 🚀 FORECAST MODE ACTIVE
-    if (forecastStart && forecastEnd && selectedStage !== 'All' && selectedCrop !== 'All') {
-      matchesForecast = false; // Default to false, must prove it fits the date range
-      
-      // In forecast mode, we DON'T check if they already observed the stage. We are forecasting the future!
-      matchesStage = true; 
-      
-      if (diary.is_sowing_done && diary.sowing_date) {
-        // Find the DAS for this Crop + Stage
-        const targetDas = sopDasMap[`${selectedCrop}_${selectedStage}`];
-        
-        if (targetDas !== undefined) {
-          const predictedDate = new Date(diary.sowing_date);
-          predictedDate.setDate(predictedDate.getDate() + targetDas);
-          
-          const start = new Date(forecastStart);
-          start.setHours(0, 0, 0, 0);
-          
-          const end = new Date(forecastEnd);
-          end.setHours(23, 59, 59, 999);
-
-          // If predicted date lands in selected week, keep it!
-          if (predictedDate >= start && predictedDate <= end) {
-            matchesForecast = true;
-            diary._predictedStageDate = predictedDate; 
-          }
-        }
+    let matchesForecast = true;
+    if (forecastStart && forecastEnd) {
+      matchesForecast = false; 
+      if (upcoming && upcoming.date) {
+        const start = new Date(forecastStart);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(forecastEnd);
+        end.setHours(23, 59, 59, 999);
+        if (upcoming.date >= start && upcoming.date <= end) matchesForecast = true;
       }
-    } else {
-      // 🚀 NORMAL MODE (No Forecast): Just check if they actually logged this stage in the past
-      matchesStage = selectedStage === 'All' || sessions.some((s: any) => s.selected_stage_id === selectedStage);
     }
     
     return matchesSE && matchesCrop && matchesStage && matchesSearch && matchesForecast;
@@ -207,14 +272,17 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
   const executeExport = () => {
     if (filteredData.length === 0) return toast({ title: 'No Data', description: 'No records match your filters to export.' });
 
-    const headers = ['Created Date', 'Farm/Diary Name', 'Farmer Name', 'Village', 'Executive (SE)', 'Area', 'Soil Type', 'Sowing Date', 'Predicted Target Date (If Filtered)', 'Observed Crops'];
+    const headers = ['Created Date', 'Farm/Diary Name (Crop)', 'Farmer Name', 'Village', 'Executive (SE)', 'Area', 'Sowing Date', 'Upcoming Stage', 'Upcoming Stage Date', 'Is Overdue'];
     const csvRows = [headers.join(',')];
     
     filteredData.forEach(diary => {
       const area = `${diary.plot_area || 0} ${diary.plot_area_unit || 'Acres'}`;
-      const observedCrops = Array.from(new Set((diary.crop_observation_sessions || []).map((s: any) => s.master_crops?.crop_name).filter(Boolean))).join(' | ');
       const sowingDate = diary.sowing_date ? new Date(diary.sowing_date).toLocaleDateString() : 'N/A';
-      const predictedDate = diary._predictedStageDate ? new Date(diary._predictedStageDate).toLocaleDateString() : 'N/A';
+      
+      const upcoming = getUpcomingStage(diary);
+      const upcomingName = upcoming ? upcoming.name : 'N/A';
+      const upcomingDate = upcoming && upcoming.date ? upcoming.date.toLocaleDateString() : 'N/A';
+      const isOverdue = upcoming && upcoming.isOverdue ? 'Yes' : 'No';
 
       const row = [
         `"${new Date(diary.created_at).toLocaleDateString()}"`,
@@ -223,10 +291,10 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
         `"${(diary.farmers?.village || 'Unknown').replace(/"/g, '""')}"`,
         `"${(diary.farmers?.profiles?.name || 'Unknown').replace(/"/g, '""')}"`,
         `"${area}"`,
-        `"${diary.soil_type || 'N/A'}"`,
         `"${sowingDate}"`,
-        `"${predictedDate}"`,
-        `"${observedCrops || 'No observations'}"`
+        `"${upcomingName}"`,
+        `"${upcomingDate}"`,
+        `"${isOverdue}"`
       ];
       csvRows.push(row.join(','));
     });
@@ -271,7 +339,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
               <BookOpen className="h-5 w-5 text-primary" /> Farm Diaries Directory
             </h2>
             <p className="text-sm text-muted-foreground">
-              Monitor field plots and forecast upcoming growth stages for proactive visits.
+              Monitor field plots and dynamically filter by Upcoming Events.
             </p>
           </div>
 
@@ -304,10 +372,11 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
               </select>
             </div>
 
+            {/* STAGE FILTER APPLIES TO UPCOMING EVENT */}
             <div className="relative flex items-center w-full sm:w-auto flex-1 md:flex-none">
               <Shield className="absolute left-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
               <select value={selectedStage} onChange={(e) => setSelectedStage(e.target.value)} className="flex h-9 w-full min-w-[180px] items-center justify-between rounded-md border border-input bg-transparent pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none">
-                <option value="All">Select Stage...</option>
+                <option value="All">Filter by Upcoming Stage...</option>
                 {stagesList.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
               </select>
             </div>
@@ -316,7 +385,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
           {/* FORECASTING CALENDAR */}
           <div className="flex flex-col sm:flex-row items-center gap-3 bg-indigo-50/50 border border-indigo-100 p-2 rounded-md">
             <div className="text-xs font-bold text-indigo-700 flex items-center gap-1.5 px-2">
-              <CalendarIcon className="h-4 w-4" /> FORECAST TARGET:
+              <CalendarIcon className="h-4 w-4" /> UPCOMING EVENT DATE:
             </div>
             
             <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -324,16 +393,10 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
               <span className="text-muted-foreground text-xs font-medium">to</span>
               <Input type="date" value={forecastEnd} onChange={(e) => setForecastEnd(e.target.value)} className="h-8 text-xs w-full sm:w-[140px] bg-white" title="End Date" />
             </div>
-
-            {forecastStart && forecastEnd && (selectedCrop === 'All' || selectedStage === 'All') && (
-              <span className="text-xs text-amber-600 font-medium ml-2 animate-pulse">
-                ⚠️ Select a Specific Crop and Stage to activate forecast
-              </span>
-            )}
             
             {forecastStart && forecastEnd && (
               <Button variant="ghost" size="sm" onClick={() => {setForecastStart(''); setForecastEnd('');}} className="h-8 text-xs text-muted-foreground hover:text-destructive ml-auto">
-                Clear Forecast
+                Clear Dates
               </Button>
             )}
           </div>
@@ -351,7 +414,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                     <th className="px-4 py-3 font-semibold text-muted-foreground">Diary & Plot Details</th>
                     <th className="px-4 py-3 font-semibold text-muted-foreground">Farmer & Village</th>
                     <th className="px-4 py-3 font-semibold text-muted-foreground">Executive (SE)</th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground">Observations & Forecast</th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground bg-indigo-50/50">Upcoming Event</th>
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-right">Action</th>
                   </tr>
                 </thead>
@@ -365,11 +428,11 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                     </tr>
                   ) : (
                     paginatedData.map((diary) => {
-                      const sessions = diary.crop_observation_sessions || [];
-                      const uniqueCrops = Array.from(new Set(sessions.map((s: any) => s.master_crops?.crop_name).filter(Boolean)));
+                      const upcoming = getUpcomingStage(diary);
 
                       return (
                         <tr key={diary.id} onClick={() => openDiaryDetails(diary)} className="hover:bg-muted/20 cursor-pointer transition-colors group">
+                          
                           <td className="px-4 py-3">
                             <div className="font-bold text-foreground">{diary.farm_name || 'Unnamed Diary'}</div>
                             <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
@@ -378,28 +441,39 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                               <span>{diary.soil_type || 'N/A Soil'}</span>
                             </div>
                           </td>
+
                           <td className="px-4 py-3">
                             <div className="font-semibold flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" /> {diary.farmers?.full_name || 'Unknown'}</div>
                             <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5"><MapPin className="h-3 w-3" /> {diary.farmers?.village || 'Unknown Village'}</div>
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground font-medium">{diary.farmers?.profiles?.name || '—'}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1.5">
-                              {uniqueCrops.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {uniqueCrops.map(crop => <Badge key={crop as string} variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[10px] px-1.5 py-0">{crop as string}</Badge>)}
-                                </div>
-                              ) : <span className="text-xs text-muted-foreground italic">No observations logged</span>}
-                              
-                              {diary._predictedStageDate && (
-                                <div className="flex items-center gap-1 mt-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded w-max">
-                                  <Clock className="h-3 w-3" /> Forecasted Stage: {new Date(diary._predictedStageDate).toLocaleDateString()}
-                                </div>
-                              )}
-                            </div>
+
+                          <td className="px-4 py-3 text-foreground font-medium">
+                            {diary.farmers?.profiles?.name || '—'}
                           </td>
+
+                          <td className="px-4 py-3 bg-indigo-50/20">
+                            {upcoming ? (
+                              upcoming.date ? (
+                                <div className="flex flex-col gap-1">
+                                  <span className={cn("text-xs font-bold truncate max-w-[200px]", upcoming.isOverdue ? "text-red-700" : "text-indigo-700")}>
+                                    {upcoming.name}
+                                  </span>
+                                  <span className={cn("text-[10px] flex items-center gap-1 font-semibold", upcoming.isOverdue ? "text-red-600" : "text-muted-foreground")}>
+                                    {upcoming.isOverdue ? <AlertCircle className="h-3 w-3 text-red-500" /> : <CalendarClock className="h-3 w-3 text-indigo-500" />} 
+                                    {upcoming.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    {upcoming.isOverdue && " (Overdue)"}
+                                  </span>
+                                </div>
+                              ) : (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">{upcoming.name}</Badge>
+                              )
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic opacity-70">Awaiting Sowing Date</span>
+                            )}
+                          </td>
+
                           <td className="px-4 py-3 text-right">
-                            <Button variant="ghost" size="sm" className="h-8 text-xs font-semibold text-primary group-hover:bg-primary/10">View Details</Button>
+                            <Button variant="ghost" size="sm" className="h-8 text-xs font-semibold text-primary group-hover:bg-primary/10">View Timeline</Button>
                           </td>
                         </tr>
                       );
@@ -449,10 +523,8 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                  )}
               </div>
 
-              {/* 🚀 RESTORED: PLOT, WATER, & HISTORICAL METRICS */}
+              {/* PLOT, WATER, & HISTORICAL METRICS */}
               <div className="space-y-4">
-                 
-                 {/* Plot & Soil Profile */}
                  <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
                    <h3 className="text-sm font-bold text-foreground border-b pb-2">Plot & Soil Profile</h3>
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-2">
@@ -467,7 +539,6 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                    </div>
                  </div>
 
-                 {/* Nutrient & Water Metrics */}
                  <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
                    <h3 className="text-sm font-bold text-foreground border-b pb-2">Nutrient & Water Metrics</h3>
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-2">
@@ -481,7 +552,6 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                    </div>
                  </div>
 
-                 {/* Historical Context */}
                  <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
                    <h3 className="text-sm font-bold text-foreground border-b pb-2">Historical Context</h3>
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-2">
@@ -490,7 +560,6 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                      <div><p className="text-xs text-muted-foreground">Input Preferences</p><p className="text-sm font-semibold">{Object.keys(selectedDiary?.historical_input_preferences || {}).length > 0 ? 'Customized' : 'None'}</p></div>
                    </div>
                  </div>
-
               </div>
 
               {/* CHRONOLOGICAL CROP OBSERVATION ACCORDION */}
@@ -501,21 +570,36 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                   <div className="py-12 flex flex-col items-center justify-center text-sm text-muted-foreground border rounded-xl border-dashed bg-white">
                     <Loader2 className="h-6 w-6 animate-spin mb-3 text-primary" /> Fetching field observations...
                   </div>
-                ) : observationSessions.length === 0 ? (
-                  <div className="text-center py-12 bg-white border border-dashed rounded-xl">
-                    <p className="text-sm font-semibold text-muted-foreground">No Observations Found</p>
-                    <p className="text-xs text-muted-foreground mt-1">No field visits have been logged for this specific diary yet.</p>
-                  </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-bold text-foreground">Tracking Crop: <span className="text-primary text-base">{observationSessions[0]?.master_crops?.crop_name}</span></span>
+                      <span className="text-sm font-bold text-foreground">
+                        Tracking Crop: <span className="text-primary text-base">
+                          {selectedDiary?.farm_name || 'Assigned Crop'}
+                        </span>
+                      </span>
                     </div>
                     
                     <Accordion type="multiple" className="w-full space-y-3">
-                      {sopTemplateStages.map((sopStage) => {
+                      {sopTemplateStages.length === 0 ? (
+                        <div className="text-center py-8 bg-slate-50 border border-dashed rounded-xl text-muted-foreground text-sm">
+                           No stages configured for this crop.
+                        </div>
+                      ) : sopTemplateStages.map((sopStage) => {
                         const stageSessions = observationSessions.filter(s => s.selected_stage_id === sopStage.stage_id);
                         const isCompleted = stageSessions.length > 0;
+                        
+                        const apps = sopStage.sop_applications || [];
+                        const minDas = apps.length > 0 ? Math.min(...apps.map((a: any) => Number(a.das))) : 0;
+                        
+                        let predictedDateStr = '';
+                        let isOverdue = false;
+                        if (selectedDiary?.is_sowing_done && selectedDiary?.sowing_date) {
+                            const pDate = new Date(selectedDiary.sowing_date);
+                            pDate.setDate(pDate.getDate() + minDas);
+                            predictedDateStr = pDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                            isOverdue = pDate < new Date(new Date().setHours(0,0,0,0)); 
+                        }
                         
                         return (
                           <AccordionItem key={sopStage.id} value={sopStage.id} className="border border-border/60 rounded-xl bg-white shadow-sm px-2">
@@ -523,20 +607,35 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                               <div className="flex items-center justify-between w-full pr-2">
                                 <div className="flex items-center gap-3">
                                   <div className={cn(
-                                    "flex items-center justify-center h-8 w-8 rounded-full text-xs font-bold border", 
+                                    "flex items-center justify-center h-8 w-8 rounded-full text-xs font-bold border shrink-0", 
                                     isCompleted ? "bg-green-100 text-green-700 border-green-200" : "bg-orange-50 text-orange-600 border-orange-200 opacity-60"
                                   )}>
                                     {sopStage.stage_sequence}
                                   </div>
-                                  <span className={cn("font-bold text-base text-left", !isCompleted && "text-muted-foreground")}>
-                                    {sopStage.master_crop_stages?.stage_name}
-                                  </span>
+                                  
+                                  <div className="flex flex-col items-start gap-0.5">
+                                    <span className={cn("font-bold text-base text-left", !isCompleted && "text-muted-foreground")}>
+                                      {sopStage.master_crop_stages?.stage_name}
+                                    </span>
+                                    {predictedDateStr && !isCompleted && (
+                                      <span className={cn("text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded border", isOverdue ? "bg-red-50 text-red-600 border-red-100" : "bg-indigo-50 text-indigo-600 border-indigo-100")}>
+                                        {isOverdue ? <AlertCircle className="h-3 w-3" /> : <CalendarClock className="h-3 w-3" />} 
+                                        Target: {predictedDateStr} (DAS: {minDas})
+                                      </span>
+                                    )}
+                                    {isCompleted && (
+                                      <span className="text-[10px] font-semibold text-green-700 flex items-center gap-1 bg-green-50 px-1.5 py-0.5 rounded border border-green-200">
+                                        <CheckCircle2 className="h-3 w-3" /> Completed
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
+                                
                                 <Badge variant="outline" className={cn(
                                   "ml-auto shrink-0", 
-                                  isCompleted ? "border-green-200 bg-green-50 text-green-700" : "border-orange-200 bg-orange-50 text-orange-600"
+                                  isCompleted ? "border-green-200 bg-green-50 text-green-700" : (isOverdue ? "border-red-200 bg-red-50 text-red-700" : "border-orange-200 bg-orange-50 text-orange-600")
                                 )}>
-                                  {isCompleted ? 'Completed' : 'Pending'}
+                                  {isCompleted ? 'Completed' : (isOverdue ? 'Overdue' : 'Pending')}
                                 </Badge>
                               </div>
                             </AccordionTrigger>
