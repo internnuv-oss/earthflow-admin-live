@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import AppLayout from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Loader2, Shield, Download, Search, BookOpen, MapPin, User, Leaf, UserCircle, Clock, Calendar as CalendarIcon, CalendarClock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Shield, Download, Search, BookOpen, MapPin, User, Leaf, UserCircle, Clock, Calendar as CalendarIcon, CalendarClock, CheckCircle2, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,17 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+
+// Utility to format date as dd-mm-yy
+const formatDDMMYY = (dateVal: string | Date | null | undefined) => {
+  if (!dateVal) return 'N/A';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return 'N/A';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  return `${day}-${month}-${year}`;
+};
 
 const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
   const { session, loading: authLoading } = useAuth();
@@ -38,6 +49,9 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
   const [selectedSE, setSelectedSE] = useState('All');
   const [selectedCrop, setSelectedCrop] = useState('All');
   const [selectedStage, setSelectedStage] = useState('All');
+  
+  // Sorting State for Table Columns
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'created_at', direction: 'desc' });
   
   // Forecasting Date Range Filters
   const [forecastStart, setForecastStart] = useState('');
@@ -168,7 +182,8 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
     }
   }, [selectedDiary, isSheetOpen, cropsList]);
 
-  useEffect(() => setCurrentPage(1), [searchTerm, selectedSE, selectedCrop, selectedStage, forecastStart, forecastEnd]); 
+  // Reset page when any filter changes
+  useEffect(() => setCurrentPage(1), [searchTerm, selectedSE, selectedCrop, selectedStage, forecastStart, forecastEnd, sortConfig]); 
 
   // 🚀 HYBRID HELPER: Uses Sequence if there are visits, uses Calendar Date if NO visits yet
   const getUpcomingStage = (diary: any) => {
@@ -265,33 +280,88 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
     
     return matchesSE && matchesCrop && matchesStage && matchesSearch && matchesForecast;
   });
+
+  // TABLE SORTING LOGIC
+  const sortedData = [...filteredData].sort((a, b) => {
+    let valA: any, valB: any;
+
+    switch (sortConfig.key) {
+      case 'created_at':
+        valA = new Date(a.created_at).getTime();
+        valB = new Date(b.created_at).getTime();
+        break;
+      case 'farm_name':
+        valA = (a.farm_name || '').toLowerCase();
+        valB = (b.farm_name || '').toLowerCase();
+        break;
+      case 'farmer_name':
+        valA = (a.farmers?.full_name || '').toLowerCase();
+        valB = (b.farmers?.full_name || '').toLowerCase();
+        break;
+      case 'executive':
+        valA = (a.farmers?.profiles?.name || '').toLowerCase();
+        valB = (b.farmers?.profiles?.name || '').toLowerCase();
+        break;
+      case 'visits': // Added sorting for Visits
+        valA = new Set(a.crop_observation_sessions?.map((s: any) => s.selected_stage_id)).size;
+        valB = new Set(b.crop_observation_sessions?.map((s: any) => s.selected_stage_id)).size;
+        break;
+      case 'upcoming_date':
+        const upA = getUpcomingStage(a);
+        const upB = getUpcomingStage(b);
+        valA = upA?.date ? upA.date.getTime() : 0;
+        valB = upB?.date ? upB.date.getTime() : 0;
+        break;
+      default:
+        return 0;
+    }
+
+    if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
   
-  const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE) || 1;
-  const paginatedData = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE) || 1;
+  const paginatedData = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const handleSort = (key: string) => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const SortIndicator = ({ sortKey }: { sortKey: string }) => {
+    if (sortConfig.key !== sortKey) return <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="h-3 w-3 text-primary" /> : <ArrowDown className="h-3 w-3 text-primary" />;
+  };
 
   const executeExport = () => {
-    if (filteredData.length === 0) return toast({ title: 'No Data', description: 'No records match your filters to export.' });
+    if (sortedData.length === 0) return toast({ title: 'No Data', description: 'No records match your filters to export.' });
 
-    const headers = ['Created Date', 'Farm/Diary Name (Crop)', 'Farmer Name', 'Village', 'Executive (SE)', 'Area', 'Sowing Date', 'Upcoming Stage', 'Upcoming Stage Date', 'Is Overdue'];
+    const headers = ['Created Date', 'Farm/Diary Name (Crop)', 'Farmer Name', 'Village', 'Executive (SE)', 'Area', 'Sowing Date', 'Visits', 'Upcoming Stage', 'Upcoming Stage Date', 'Is Overdue'];
     const csvRows = [headers.join(',')];
     
-    filteredData.forEach(diary => {
+    // Use sortedData for export so it matches the UI
+    sortedData.forEach(diary => {
       const area = `${diary.plot_area || 0} ${diary.plot_area_unit || 'Acres'}`;
-      const sowingDate = diary.sowing_date ? new Date(diary.sowing_date).toLocaleDateString() : 'N/A';
+      const sowingDate = diary.sowing_date ? formatDDMMYY(diary.sowing_date) : 'N/A';
+      const visitsCount = new Set(diary.crop_observation_sessions?.map((s: any) => s.selected_stage_id)).size;
       
       const upcoming = getUpcomingStage(diary);
       const upcomingName = upcoming ? upcoming.name : 'N/A';
-      const upcomingDate = upcoming && upcoming.date ? upcoming.date.toLocaleDateString() : 'N/A';
+      const upcomingDate = upcoming && upcoming.date ? formatDDMMYY(upcoming.date) : 'N/A';
       const isOverdue = upcoming && upcoming.isOverdue ? 'Yes' : 'No';
 
       const row = [
-        `"${new Date(diary.created_at).toLocaleDateString()}"`,
+        `"${formatDDMMYY(diary.created_at)}"`,
         `"${(diary.farm_name || 'Unnamed').replace(/"/g, '""')}"`,
         `"${(diary.farmers?.full_name || 'Unknown').replace(/"/g, '""')}"`,
         `"${(diary.farmers?.village || 'Unknown').replace(/"/g, '""')}"`,
         `"${(diary.farmers?.profiles?.name || 'Unknown').replace(/"/g, '""')}"`,
         `"${area}"`,
         `"${sowingDate}"`,
+        `"${visitsCount}"`,
         `"${upcomingName}"`,
         `"${upcomingDate}"`,
         `"${isOverdue}"`
@@ -411,17 +481,31 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
               <table className="w-full text-sm text-left">
                 <thead className="bg-muted/50 border-b">
                   <tr>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground">Diary & Plot Details</th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground">Farmer & Village</th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground">Executive (SE)</th>
-                    <th className="px-4 py-3 font-semibold text-muted-foreground bg-indigo-50/50">Upcoming Event</th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground cursor-pointer hover:bg-muted/80 select-none group" onClick={() => handleSort('created_at')}>
+                      <div className="flex items-center gap-1.5">Created Date <SortIndicator sortKey="created_at" /></div>
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground cursor-pointer hover:bg-muted/80 select-none group" onClick={() => handleSort('farm_name')}>
+                      <div className="flex items-center gap-1.5">Diary & Plot Details <SortIndicator sortKey="farm_name" /></div>
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground cursor-pointer hover:bg-muted/80 select-none group" onClick={() => handleSort('farmer_name')}>
+                      <div className="flex items-center gap-1.5">Farmer & Village <SortIndicator sortKey="farmer_name" /></div>
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground cursor-pointer hover:bg-muted/80 select-none group" onClick={() => handleSort('executive')}>
+                      <div className="flex items-center gap-1.5">Executive (SE) <SortIndicator sortKey="executive" /></div>
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground cursor-pointer hover:bg-muted/80 select-none group" onClick={() => handleSort('visits')}>
+                      <div className="flex items-center gap-1.5">Visits <SortIndicator sortKey="visits" /></div>
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground bg-indigo-50/50 cursor-pointer hover:bg-indigo-100 select-none group" onClick={() => handleSort('upcoming_date')}>
+                      <div className="flex items-center gap-1.5">Upcoming Event <SortIndicator sortKey="upcoming_date" /></div>
+                    </th>
                     <th className="px-4 py-3 font-semibold text-muted-foreground text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {paginatedData.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-12 text-center text-muted-foreground">
+                      <td colSpan={7} className="py-12 text-center text-muted-foreground">
                         <BookOpen className="h-8 w-8 mx-auto mb-3 opacity-20" />
                         No farm diaries found matching your criteria.
                       </td>
@@ -429,10 +513,15 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                   ) : (
                     paginatedData.map((diary) => {
                       const upcoming = getUpcomingStage(diary);
+                      const visitsCount = new Set(diary.crop_observation_sessions?.map((s: any) => s.selected_stage_id)).size;
 
                       return (
                         <tr key={diary.id} onClick={() => openDiaryDetails(diary)} className="hover:bg-muted/20 cursor-pointer transition-colors group">
                           
+                          <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
+                            {formatDDMMYY(diary.created_at)}
+                          </td>
+
                           <td className="px-4 py-3">
                             <div className="font-bold text-foreground">{diary.farm_name || 'Unnamed Diary'}</div>
                             <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
@@ -451,6 +540,12 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                             {diary.farmers?.profiles?.name || '—'}
                           </td>
 
+                          <td className="px-4 py-3">
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                              {visitsCount}
+                            </Badge>
+                          </td>
+
                           <td className="px-4 py-3 bg-indigo-50/20">
                             {upcoming ? (
                               upcoming.date ? (
@@ -460,7 +555,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                                   </span>
                                   <span className={cn("text-[10px] flex items-center gap-1 font-semibold", upcoming.isOverdue ? "text-red-600" : "text-muted-foreground")}>
                                     {upcoming.isOverdue ? <AlertCircle className="h-3 w-3 text-red-500" /> : <CalendarClock className="h-3 w-3 text-indigo-500" />} 
-                                    {upcoming.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    {formatDDMMYY(upcoming.date)}
                                     {upcoming.isOverdue && " (Overdue)"}
                                   </span>
                                 </div>
@@ -484,10 +579,10 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
             )}
           </div>
 
-          {!loading && filteredData.length > 0 && (
+          {!loading && sortedData.length > 0 && (
             <div className="flex flex-col md:flex-row items-center justify-between px-4 py-3 border-t bg-muted/20 gap-4">
               <div className="text-xs text-muted-foreground font-medium w-full md:w-auto text-center md:text-left">
-                Showing <span className="text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)}</span> of <span className="text-foreground">{filteredData.length}</span> entries
+                Showing <span className="text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)}</span> of <span className="text-foreground">{sortedData.length}</span> entries
               </div>
               <div className="flex items-center gap-2 w-full md:w-auto justify-center md:justify-end">
                 <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
@@ -519,7 +614,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                    {selectedDiary?.is_sowing_done ? "Sowing Done" : "Pre-Sowing"}
                  </Badge>
                  {selectedDiary?.sowing_date && (
-                   <Badge variant="outline">Sown: {new Date(selectedDiary.sowing_date).toLocaleDateString()}</Badge>
+                   <Badge variant="outline">Sown: {formatDDMMYY(selectedDiary.sowing_date)}</Badge>
                  )}
               </div>
 
@@ -597,7 +692,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                         if (selectedDiary?.is_sowing_done && selectedDiary?.sowing_date) {
                             const pDate = new Date(selectedDiary.sowing_date);
                             pDate.setDate(pDate.getDate() + minDas);
-                            predictedDateStr = pDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                            predictedDateStr = formatDDMMYY(pDate);
                             isOverdue = pDate < new Date(new Date().setHours(0,0,0,0)); 
                         }
                         
@@ -650,7 +745,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
                                         <div className="flex justify-between items-start mb-2">
                                           <div>
                                             <h4 className="font-bold text-sm text-foreground">Visit Record #{stageSessions.length - sIdx}</h4>
-                                            <p className="text-xs text-muted-foreground mt-1">Logged: {new Date(session.created_at).toLocaleString()}</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Logged: {formatDDMMYY(session.created_at)}</p>
                                           </div>
                                           <Badge variant="outline" className={cn(
                                             "font-bold", 

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
@@ -22,21 +23,69 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
 
   const [approveTA, setApproveTA] = useState(true);
   const [approveDA, setApproveDA] = useState(true);
+  
+  const [customTA, setCustomTA] = useState<number | string>(0);
+  const [customDA, setCustomDA] = useState<number | string>(0);
+  const [adminComment, setAdminComment] = useState('');
 
-  // Reset checkboxes to true whenever sheet opens or targets new expense
+  // Reset states and recalculate base amounts whenever sheet opens
   useEffect(() => {
-    if (open) {
-      setApproveTA(true);
-      setApproveDA(true);
+    if (open && expense) {
+      // 🚀 1. Load the separated admin comment from the database
+      setAdminComment(expense.admin_comments || '');
+
+      // Safe parsing for shift data to calculate defaults
+      const shift = expense.shifts;
+      let odoDistance = 0;
+      if (shift?.start_km && shift?.end_km) {
+        const s = parseFloat(shift.start_km.replace(/[^0-9.]/g, ''));
+        const e = parseFloat(shift.end_km.replace(/[^0-9.]/g, ''));
+        if (!isNaN(s) && !isNaN(e) && e > s) odoDistance = parseFloat((e - s).toFixed(1));
+      }
+      
+      const distanceUsed = odoDistance > 0 ? odoDistance : (shift?.total_distance || 0);
+      const baseDaAmount = distanceUsed > 60 ? 150 : 0;
+      
+      const isFourWheeler = (Number(expense.amount) - baseDaAmount) === (distanceUsed * 8);
+      const ratePerKm = isFourWheeler ? 8 : 4;
+      const baseTaAmount = distanceUsed * ratePerKm;
+
+      let initialTA = baseTaAmount;
+      let initialDA = baseDaAmount;
+      let initialApproveTA = true;
+      let initialApproveDA = true;
+
+      // 🚀 2. If already approved, extract the custom values we previously saved in remarks
+      if (expense.status === 'Approved' && expense.category === 'TA/DA' && expense.remarks) {
+        const taMatch = expense.remarks.match(/Paid TA=Yes \(₹([\d.]+)\)/);
+        const daMatch = expense.remarks.match(/DA=Yes \(₹([\d.]+)\)/);
+        
+        if (taMatch) {
+          initialTA = parseFloat(taMatch[1]);
+        } else if (expense.remarks.includes('Paid TA=No')) {
+          initialApproveTA = false;
+        }
+
+        if (daMatch) {
+          initialDA = parseFloat(daMatch[1]);
+        } else if (expense.remarks.includes('DA=No')) {
+          initialApproveDA = false;
+        }
+      }
+
+      setCustomTA(initialTA);
+      setCustomDA(initialDA);
+      setApproveTA(initialApproveTA);
+      setApproveDA(initialApproveDA);
     }
   }, [open, expense]);
 
   if (!expense) return null;
 
-  // 🚀 Helper to check if the expense is currently actionable (Pending OR Queried)
+  // Helper to check if the expense is currently actionable
   const isActionable = expense.status === 'Pending' || expense.status === 'Queried';
 
-  // Safe parsing for shift data
+  // For UI display of the calculated distance
   const shift = expense.shifts;
   let odoDistance = 0;
   if (shift?.start_km && shift?.end_km) {
@@ -44,20 +93,11 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
     const e = parseFloat(shift.end_km.replace(/[^0-9.]/g, ''));
     if (!isNaN(s) && !isNaN(e) && e > s) odoDistance = parseFloat((e - s).toFixed(1));
   }
-  
   const distanceUsed = odoDistance > 0 ? odoDistance : (shift?.total_distance || 0);
-
-  // 🚀 DYNAMIC RATE CALCULATION: 
-  // We check the original DB expense amount to determine if the ₹8/km rate was applied.
-  const daAmount = distanceUsed > 60 ? 150 : 0;
-  
-  // If the total expense in the DB minus the DA equals (Distance * 8), they used a four-wheeler.
-  // Otherwise, default to ₹4/km.
-  const isFourWheeler = (Number(expense.amount) - daAmount) === (distanceUsed * 8);
+  const isFourWheeler = (Number(expense.amount) - (distanceUsed > 60 ? 150 : 0)) === (distanceUsed * 8);
   const ratePerKm = isFourWheeler ? 8 : 4;
-  
-  const taAmount = distanceUsed * ratePerKm;
-  const liveTotalCalculated = (approveTA ? taAmount : 0) + (approveDA ? daAmount : 0);
+
+  const liveTotalCalculated = (approveTA ? Number(customTA || 0) : 0) + (approveDA ? Number(customDA || 0) : 0);
 
   const handleStatusChange = async (newStatus: string) => {
     setUpdating(true);
@@ -65,6 +105,7 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
     let finalAmount = Number(expense.amount);
     let finalRemarks = expense.remarks || '';
 
+    // Adjust amount for TA/DA if approved
     if (newStatus === 'Approved' && expense.category === 'TA/DA') {
       finalAmount = liveTotalCalculated;
       
@@ -72,20 +113,24 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
         setUpdating(false);
         return toast({
           title: 'Action Blocked',
-          description: 'Cannot approve an allowance value of ₹0. Please tick a component or reject the request.',
+          description: 'Cannot approve an allowance value of ₹0. Please tick a component, edit the values, or reject the request.',
           variant: 'destructive'
         });
       }
       
-      finalRemarks += ` [Adjusted on approval: Paid TA=${approveTA ? 'Yes' : 'No'}, DA=${approveDA ? 'Yes' : 'No'}]`;
+      // Clean up the old automated string so it doesn't duplicate if edited twice
+      finalRemarks = finalRemarks.replace(/ \[Adjusted on approval:.*?\]/g, '');
+      finalRemarks += ` [Adjusted on approval: Paid TA=${approveTA ? `Yes (₹${customTA})` : 'No'}, DA=${approveDA ? `Yes (₹${customDA})` : 'No'}]`;
     }
 
+    // 🚀 3. Update the database, sending the comment to the new column
     const { error } = await supabase
       .from('expenses')
       .update({ 
         status: newStatus,
         amount: finalAmount,
-        remarks: finalRemarks
+        remarks: finalRemarks.trim() || null,
+        admin_comments: adminComment.trim() || null // Saving to the new column
       })
       .eq('id', expense.id);
 
@@ -95,6 +140,7 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
       toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Expense Updated', description: `Status changed to ${newStatus}` });
+      // Pass the updated data back to the parent list so it refreshes instantly
       onUpdate(expense.id, newStatus, finalAmount); 
       onClose();
     }
@@ -108,6 +154,9 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
       default: return 'bg-amber-100 text-amber-800 border-amber-200';
     }
   };
+
+  // Strip the automated TA/DA tracking string from the UI so remarks look clean
+  const displayRemarks = (expense.remarks || 'No remarks provided.').replace(/ \[Adjusted on approval:.*?\]/g, '');
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -154,39 +203,57 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                 </div>
               </div>
 
-              {/* Allowance Math with Selectable Box Approvals */}
+              {/* Allowance Math with Editable Inputs */}
               <div className="bg-muted/30 rounded-md p-3 text-sm space-y-3 border">
                 
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
+                <div className="flex justify-between items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <Checkbox 
                       id="approve-ta" 
                       checked={approveTA} 
                       disabled={!canEdit || !isActionable}
                       onCheckedChange={(v) => setApproveTA(!!v)}
                     />
-                    {/* 🚀 Dynamic Label based on the deduced rate */}
-                    <Label htmlFor="approve-ta" className="text-muted-foreground cursor-pointer text-sm">Travel Allowance (₹{ratePerKm}/km)</Label>
+                    <Label htmlFor="approve-ta" className="text-muted-foreground cursor-pointer text-sm truncate">Travel Allowance (₹{ratePerKm}/km)</Label>
                   </div>
-                  <span className={`font-semibold ${approveTA ? '' : 'line-through text-muted-foreground/60'}`}>₹{taAmount.toFixed(2)}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-sm ${approveTA ? 'text-foreground' : 'text-muted-foreground/60'}`}>₹</span>
+                    <Input 
+                      type="number" 
+                      value={customTA} 
+                      onChange={(e) => setCustomTA(e.target.value)} 
+                      disabled={!approveTA || !canEdit || !isActionable}
+                      className={`h-8 w-20 text-right px-2 ${!approveTA && 'opacity-50 line-through'}`}
+                    />
+                  </div>
                 </div>
 
-                {daAmount > 0 && (
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
+                {/* Always show DA config if it was checked previously, or if distance is > 60 */}
+                {(Number(customDA) > 0 || distanceUsed > 60 || !isActionable) && (
+                  <div className="flex justify-between items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Checkbox 
                         id="approve-da" 
                         checked={approveDA} 
                         disabled={!canEdit || !isActionable} 
                         onCheckedChange={(v) => setApproveDA(!!v)}
                       />
-                      <Label htmlFor="approve-da" className="text-muted-foreground cursor-pointer text-sm">Daily Allowance (&gt; 60km)</Label>
+                      <Label htmlFor="approve-da" className="text-muted-foreground cursor-pointer text-sm truncate">Daily Allowance (&gt; 60km)</Label>
                     </div>
-                    <span className={`font-semibold ${approveDA ? '' : 'line-through text-muted-foreground/60'}`}>₹{daAmount.toFixed(2)}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`text-sm ${approveDA ? 'text-foreground' : 'text-muted-foreground/60'}`}>₹</span>
+                      <Input 
+                        type="number" 
+                        value={customDA} 
+                        onChange={(e) => setCustomDA(e.target.value)} 
+                        disabled={!approveDA || !canEdit || !isActionable}
+                        className={`h-8 w-20 text-right px-2 ${!approveDA && 'opacity-50 line-through'}`}
+                      />
+                    </div>
                   </div>
                 )}
 
-                <div className="flex justify-between border-t pt-2 mt-2 font-bold text-base">
+                <div className="flex justify-between border-t pt-3 mt-2 font-bold text-base">
                   <span>{isActionable ? 'Adjusted Total' : 'Total Calculated'}</span>
                   <span>₹{liveTotalCalculated.toFixed(2)}</span>
                 </div>
@@ -219,8 +286,8 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
           {/* Standard Expense Details */}
           <div className="space-y-4">
             <div className="space-y-1">
-              <span className="text-xs text-muted-foreground font-semibold uppercase">Remarks</span>
-              <p className="text-sm bg-muted/30 p-3 rounded-md border">{expense.remarks || 'No remarks provided.'}</p>
+              <span className="text-xs text-muted-foreground font-semibold uppercase">Executive Remarks</span>
+              <p className="text-sm bg-muted/30 p-3 rounded-md border whitespace-pre-wrap">{displayRemarks}</p>
             </div>
 
             {expense.receipt_url && expense.receipt_url !== 'SYSTEM_GENERATED' && (
@@ -231,6 +298,18 @@ export const ExpenseActionSheet = ({ open, expense, onClose, onUpdate, canEdit }
                 </a>
               </div>
             )}
+          </div>
+
+          {/* Admin Comment Box */}
+          <div className="space-y-2 mt-6">
+            <Label className="text-xs text-muted-foreground font-semibold uppercase">Admin Comment</Label>
+            <textarea 
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-white"
+              placeholder={isActionable ? "Write a reason for approval, query, or rejection (optional)..." : "No admin comment provided."}
+              value={adminComment}
+              onChange={(e) => setAdminComment(e.target.value)}
+              disabled={!canEdit || !isActionable}
+            />
           </div>
         </div>
 
