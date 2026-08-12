@@ -7,9 +7,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { MapContainer, TileLayer, Polyline as LeafletPolyline, Marker as LeafletMarker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import L from 'leaflet'; // Added for custom Leaflet markers
 
 // 🚀 INTELLIGENT LOCAL DEV MAP FALLBACK
-const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
+const RouteMap = ({ path, activityMarkers = [] }: { path: { lat: number; lng: number }[], activityMarkers?: any[] }) => {
   const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   const { isLoaded, loadError } = useJsApiLoader({
@@ -32,6 +33,19 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
             attribution='&copy; OpenStreetMap contributors'
           />
           <LeafletPolyline positions={leafletPath} pathOptions={{ color: '#2563eb', weight: 4 }} />
+          
+          {/* 🚀 Render Leaflet Activity Markers */}
+          {activityMarkers.map((marker, idx) => {
+            const customIcon = L.divIcon({
+              className: 'custom-activity-marker',
+              html: `<div style="background-color: rgba(234, 88, 12, 0.9); border: 2px solid white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 11px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${marker.number}</div>`,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            });
+            return (
+              <LeafletMarker key={`act-${idx}`} position={[marker.lat, marker.lng]} icon={customIcon} />
+            );
+          })}
         </MapContainer>
         <span className="absolute bottom-2 right-2 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm z-[1000]">
           Local Dev Map Mode
@@ -55,6 +69,29 @@ const RouteMap = ({ path }: { path: { lat: number; lng: number }[] }) => {
       />
       <Marker position={path[0]} label="S" />
       <Marker position={path[path.length - 1]} label="E" />
+
+      {/* 🚀 Render Google Maps Activity Markers */}
+      {activityMarkers.map((marker, idx) => (
+        <Marker
+          key={`act-${idx}`}
+          position={{ lat: marker.lat, lng: marker.lng }}
+          label={{
+            text: String(marker.number),
+            color: 'white',
+            fontWeight: 'bold',
+            fontSize: '11px'
+          }}
+          title={marker.title}
+          icon={{
+            path: window.google.maps.SymbolPath.CIRCLE,
+            fillColor: '#ea580c', // Orange-600
+            fillOpacity: 0.9,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+            scale: 10
+          }}
+        />
+      ))}
     </GoogleMap>
   );
 };
@@ -334,6 +371,16 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
   // 🚀 Prioritize the Snapped Path over the raw Live Path
   const displayPath = snappedPath.length > 0 ? snappedPath : (livePath.length > 0 ? livePath : fallbackPath);
 
+  // 🚀 Prepare the numbered activity markers to pass to the Map
+  const activityMarkers = events
+    .filter((e: any) => e.type === 'activity' && e.location?.lat && e.location?.lng)
+    .map((e: any, idx: number) => ({
+      lat: Number(e.location.lat),
+      lng: Number(e.location.lng),
+      number: idx + 1,
+      title: e.title
+    }));
+
   return (
     <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
@@ -414,7 +461,8 @@ export const AttendanceTimelineSheet = ({ shift, seName, open, onClose }: Props)
                 </span>
               </div>
               <div className="h-[250px] w-full bg-muted/10 relative">
-                <RouteMap path={displayPath} />
+                {/* 🚀 Passing activity markers to RouteMap */}
+                <RouteMap path={displayPath} activityMarkers={activityMarkers} />
               </div>
             </div>
           )}
