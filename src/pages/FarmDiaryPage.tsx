@@ -353,6 +353,7 @@ const FarmDiaryPage = ({ onLogout }: { onLogout: () => void }) => {
       const upcomingDate = upcoming && upcoming.date ? formatDDMMYY(upcoming.date) : 'N/A';
       const isOverdue = upcoming && upcoming.isOverdue ? 'Yes' : 'No';
 
+      
       const row = [
         `"${formatDDMMYY(diary.created_at)}"`,
         `"${(diary.farm_name || 'Unnamed').replace(/"/g, '""')}"`,
