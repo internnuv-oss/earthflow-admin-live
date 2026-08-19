@@ -6,10 +6,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import AppLayout from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Loader2, Shield, Plus, User, ChevronLeft, ChevronRight, BarChart2, MapIcon } from 'lucide-react';
+import { Loader2, Shield, Plus, User, ChevronLeft, ChevronRight, BarChart2, MapIcon, Package } from 'lucide-react';
 import { RouteBuilderDialog } from '@/components/RouteBuilderDialog';
 import { SERoutesSheet } from '@/components/SERoutesSheet';
-import { TerritoryViewSheet, AnalyticsTable } from '@/components/TerritoryViewSheet';
+// Make sure ProductAnalyticsTable is imported here!
+import { TerritoryViewSheet, AnalyticsTable, ProductAnalyticsTable } from '@/components/TerritoryViewSheet';
 import { PolygonMap, MapPolygonFeature } from '@/components/PolygonMap';
 
 interface RoutesPageProps {
@@ -58,6 +59,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
   const [selectedViewSE, setSelectedViewSE] = useState<any | null>(null);
 
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [isGlobalProductsOpen, setIsGlobalProductsOpen] = useState(false); // 🚀 NEW: Global Products Modal State
   const [analyticsData, setAnalyticsData] = useState<any[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
@@ -228,14 +230,13 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
   
 
   const handleOpenGlobalAnalytics = async () => {
-    setIsAnalyticsOpen(true);
     setAnalyticsLoading(true);
 
     try {
       let fetchedFarmers: any[] = [];
       let fetchedDrafts: any[] = [];
       let fetchedFarmCards: any[] = [];
-      let fetchedFarmDiaries: any[] = []; // 🚀 NEW: Array for Farm Diaries
+      let fetchedFarmDiaries: any[] = []; 
 
       let from = 0;
       const step = 1000;
@@ -269,10 +270,10 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         from += step;
       }
 
-      // 🚀 4. NEW: Fetch ALL Farm Diaries via farmer_id relation
+      // 4. Fetch ALL Farm Diaries WITH their base visits 🚀
       from = 0;
       while (true) {
-        const { data, error } = await supabase.from('farm_diary').select('id, farmer_id').range(from, from + step - 1);
+        const { data, error } = await supabase.from('farm_diary').select('id, farmer_id, mandatory_base_visits(fertilizers_applied, pesticides_applied)').range(from, from + step - 1);
         if (error) throw error;
         if (data && data.length > 0) fetchedFarmDiaries.push(...data);
         if (!data || data.length < step) break;
@@ -306,7 +307,6 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         };
       });
 
-      // 🚀 Map farmer_id to se_id for Diary grouping
       const farmerToSE = new Map<string, string>();
       fetchedFarmers.forEach(f => farmerToSE.set(f.id, f.se_id));
       fetchedDrafts.forEach(d => farmerToSE.set(d.entity_id, d.se_id));
@@ -324,8 +324,11 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
           completed: seCards.filter(c => c.status !== 'DRAFT').length
         };
 
-        // 🚀 Count Farm Diaries specifically mapped to this SE's farmers
-        const seDiariesCount = fetchedFarmDiaries.filter(diary => farmerToSE.get(diary.farmer_id) === se.id).length;
+        const seDiaries = fetchedFarmDiaries.filter(diary => farmerToSE.get(diary.farmer_id) === se.id);
+        const seDiariesCount = seDiaries.length;
+        
+        // 🚀 Extract the visits attached to this SE's farmers for the Product Table
+        const seVisits = seDiaries.flatMap(d => d.mandatory_base_visits || []);
 
         const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
         const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
@@ -335,7 +338,8 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
           villageCount: uniqueSeVillages.length, 
           farmers: combinedFarmersForSE,
           externalFarmCardCount: detailedFarmCardMetrics,
-          externalFarmDiaryCount: seDiariesCount // 🚀 Pass count to Analytics Table
+          externalFarmDiaryCount: seDiariesCount,
+          visits: seVisits // 🚀 Pass visits array downstream
         };
       });
 
@@ -399,8 +403,13 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
             <MapIcon className="h-4 w-4" /> View Global Map
           </Button>
 
-          <Button onClick={handleOpenGlobalAnalytics} variant="outline" className="gap-2 text-indigo-600 hover:text-indigo-700 border-indigo-200 bg-indigo-50/50">
-            <BarChart2 className="h-4 w-4" /> View Overall Analytics
+          <Button onClick={() => { handleOpenGlobalAnalytics(); setIsAnalyticsOpen(true); }} variant="outline" className="gap-2 text-indigo-600 hover:text-indigo-700 border-indigo-200 bg-indigo-50/50">
+            <BarChart2 className="h-4 w-4" />  Overall Analytics
+          </Button>
+
+          {/* 🚀 NEW: Global Product Analysis Button */}
+          <Button onClick={() => { handleOpenGlobalAnalytics(); setIsGlobalProductsOpen(true); }} variant="outline" className="gap-2 text-orange-600 hover:text-orange-700 border-orange-200 bg-orange-50/50">
+            <Package className="h-4 w-4" /> Product Analysis
           </Button>
 
           {routesAccess.can_edit && (
@@ -530,6 +539,7 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
 
       <TerritoryViewSheet se={selectedViewSE} open={!!selectedViewSE} onClose={() => setSelectedViewSE(null)} />
 
+      {/* 🚀 ORIGINAL: Global Analytics Modal */}
       <Dialog open={isAnalyticsOpen} onOpenChange={setIsAnalyticsOpen}>
         <DialogContent aria-describedby={undefined} className="max-w-[95vw] w-full max-h-[95vh] overflow-hidden flex flex-col p-0">
           <DialogHeader className="px-6 py-4 border-b bg-muted/30 shrink-0">
@@ -551,6 +561,41 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
               </div>
             ) : (
               <AnalyticsTable entities={analyticsData} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 🚀 NEW: Global Products Analytics Modal */}
+      <Dialog open={isGlobalProductsOpen} onOpenChange={setIsGlobalProductsOpen}>
+        <DialogContent aria-describedby={undefined} className="max-w-[95vw] w-full max-h-[95vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="px-6 py-4 border-b bg-orange-50/50 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Package className="h-6 w-6 text-orange-600" /> Overall Product Usage Analysis
+            </DialogTitle>
+            <DialogDescription>Product application frequency grouped by Sales Executive territory.</DialogDescription>
+          </DialogHeader>
+          
+          <div className="p-6 overflow-auto flex-1 bg-slate-50">
+            {analyticsLoading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                <p className="text-sm text-muted-foreground">Compiling global product data...</p>
+              </div>
+            ) : analyticsData.length === 0 ? (
+              <div className="text-center py-16 bg-white border border-dashed rounded-lg">
+                <p className="text-muted-foreground font-medium">No active territory data found.</p>
+              </div>
+            ) : (
+              <ProductAnalyticsTable 
+                entities={[
+                  { 
+                    name: 'TOTAL (ALL)', 
+                    visits: analyticsData.flatMap(se => se.visits || []) 
+                  },
+                  ...analyticsData
+                ]} 
+              />
             )}
           </div>
         </DialogContent>
