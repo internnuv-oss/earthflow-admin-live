@@ -63,7 +63,12 @@ serve(async (req) => {
     // Call Gemini ONLY for untranslated strings
     const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" })
     const prompt = `You are an expert translator for an Indian Agricultural Application.
-    Translate this JSON array of agricultural terms into Hindi and Gujarati. 
+    Translate this JSON array of English agricultural terms into Hindi and Gujarati. 
+    
+    STRICT RULES:
+    1. The "hi" value MUST be in the Hindi Devanagari script.
+    2. The "gu" value MUST be in the Gujarati script. Do NOT put Hindi text in the "gu" field.
+    
     Return ONLY a valid JSON object format: { "EnglishTerm": { "hi": "HindiTranslation", "gu": "GujaratiTranslation" } }
     Data: ${JSON.stringify(missingStrings)}`;
 
