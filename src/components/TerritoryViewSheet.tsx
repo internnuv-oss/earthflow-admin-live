@@ -21,15 +21,14 @@ interface Props {
 }
 
 type ViewLevel = 'routes' | 'villages' | 'farmers';
-
 // ----------------------------------------------------------------------
 // 1. PRODUCT ANALYTICS TABLE COMPONENT
 // ----------------------------------------------------------------------
 export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, visits: any[] }[] }) => {
-  const productSet = new Set<string>();
+  const productUnitSet = new Set<string>();
   const entityTotals: Record<string, number> = {};
   
-  // 1. Gather all unique products AND calculate total product usages per entity
+  // 1. Gather all unique Product+Unit combinations AND calculate total usages
   entities.forEach(e => {
     let totalUsesInEntity = 0;
     
@@ -39,14 +38,18 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
       
       ferts.forEach((f: any) => {
         if (f.name) {
-          productSet.add(f.name.trim());
+          const name = f.name.trim();
+          const unit = (f.unit || '').trim();
+          productUnitSet.add(`${name}|||${unit}`); // Combine Name and Unit as unique key
           totalUsesInEntity++;
         }
       });
       
       pests.forEach((p: any) => {
         if (p.name) {
-          productSet.add(p.name.trim());
+          const name = p.name.trim();
+          const unit = (p.unit || '').trim();
+          productUnitSet.add(`${name}|||${unit}`); // Combine Name and Unit as unique key
           totalUsesInEntity++;
         }
       });
@@ -55,40 +58,40 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
     entityTotals[e.name] = totalUsesInEntity;
   });
 
-  const allProducts = Array.from(productSet).sort();
+  const allProductUnits = Array.from(productUnitSet).sort();
 
-  // 2. Calculate row counts AND quantities for each specific product
-  const rows = allProducts.map(productName => {
-    const rowData: any = { label: productName };
+  // 2. Calculate row counts AND quantities for each specific product+unit combination
+  const rows = allProductUnits.map(pu => {
+    const [productName, unit] = pu.split('|||');
+    const displayLabel = unit ? `${productName} (${unit})` : productName;
+    
+    const rowData: any = { label: displayLabel };
     
     entities.forEach(e => {
       let count = 0;
       let totalQty = 0;
-      let unit = '';
 
       e.visits?.forEach(visit => {
         const ferts = typeof visit.fertilizers_applied === 'string' ? JSON.parse(visit.fertilizers_applied || '[]') : (visit.fertilizers_applied || []);
         const pests = typeof visit.pesticides_applied === 'string' ? JSON.parse(visit.pesticides_applied || '[]') : (visit.pesticides_applied || []);
         
-        // Match fertilizers
+        // Match fertilizers (must match both name AND unit)
         ferts.forEach((f: any) => { 
-          if (f.name?.trim() === productName) {
+          if (f.name?.trim() === productName && (f.unit || '').trim() === unit) {
             count++;
             totalQty += parseFloat(f.quantity || '0');
-            if (f.unit && !unit) unit = f.unit; // Grab the unit (e.g., L, ml, kg)
           } 
         });
-        // Match pesticides
+        
+        // Match pesticides (must match both name AND unit)
         pests.forEach((p: any) => { 
-          if (p.name?.trim() === productName) {
+          if (p.name?.trim() === productName && (p.unit || '').trim() === unit) {
             count++;
             totalQty += parseFloat(p.quantity || '0');
-            if (p.unit && !unit) unit = p.unit;
           } 
         });
       });
       
-      // Store an object containing count, total quantity, and the unit
       rowData[e.name] = { count, totalQty, unit };
     });
     
@@ -126,18 +129,25 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
                   const count = stats.count;
                   const totalInEntity = entityTotals[e.name];
                   
+                  // Check if this is the "TOTAL" column
+                  const isTotalCol = colIdx === 0;
                   const percentage = totalInEntity > 0 ? Math.round((count / totalInEntity) * 100) : 0;
 
                   return (
-                    <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 font-medium ${colIdx === 0 ? 'bg-orange-50/30' : ''}`}>
+                    <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 font-medium ${isTotalCol ? 'bg-orange-50/30' : ''}`}>
                       {count > 0 ? (
                         <div className="flex flex-col items-center justify-center gap-1">
-                          <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
-                            {count} Uses ({percentage}%)
-                          </Badge>
+                          
+                          {/* Hide the badge if it is the Total Column */}
+                          {!isTotalCol && (
+                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                              {count} Uses ({percentage}%)
+                            </Badge>
+                          )}
+                          
                           {stats.totalQty > 0 && (
-                            <span className="text-[11px] font-bold text-emerald-800">
-                              Total: {stats.totalQty} {stats.unit}
+                            <span className={`font-bold text-emerald-800 ${isTotalCol ? 'text-[14px]' : 'text-[11px]'}`}>
+                              {isTotalCol ? 'Total: ' : ''}{stats.totalQty} {stats.unit}
                             </span>
                           )}
                         </div>
@@ -155,7 +165,6 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
     </div>
   );
 };
-
 // ----------------------------------------------------------------------
 // 2. MAIN ANALYTICS TABLE COMPONENT
 // ----------------------------------------------------------------------
