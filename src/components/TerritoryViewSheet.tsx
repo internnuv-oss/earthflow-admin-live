@@ -27,35 +27,69 @@ type ViewLevel = 'routes' | 'villages' | 'farmers';
 // ----------------------------------------------------------------------
 export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, visits: any[] }[] }) => {
   const productSet = new Set<string>();
+  const entityTotals: Record<string, number> = {};
   
-  // Extract unique products
+  // 1. Gather all unique products AND calculate total product usages per entity
   entities.forEach(e => {
+    let totalUsesInEntity = 0;
+    
     e.visits?.forEach(visit => {
       const ferts = typeof visit.fertilizers_applied === 'string' ? JSON.parse(visit.fertilizers_applied || '[]') : (visit.fertilizers_applied || []);
       const pests = typeof visit.pesticides_applied === 'string' ? JSON.parse(visit.pesticides_applied || '[]') : (visit.pesticides_applied || []);
       
-      ferts.forEach((f: any) => f.name && productSet.add(f.name.trim()));
-      pests.forEach((p: any) => p.name && productSet.add(p.name.trim()));
+      ferts.forEach((f: any) => {
+        if (f.name) {
+          productSet.add(f.name.trim());
+          totalUsesInEntity++;
+        }
+      });
+      
+      pests.forEach((p: any) => {
+        if (p.name) {
+          productSet.add(p.name.trim());
+          totalUsesInEntity++;
+        }
+      });
     });
+    
+    entityTotals[e.name] = totalUsesInEntity;
   });
 
   const allProducts = Array.from(productSet).sort();
 
-  // Calculate totals
+  // 2. Calculate row counts AND quantities for each specific product
   const rows = allProducts.map(productName => {
     const rowData: any = { label: productName };
     
     entities.forEach(e => {
       let count = 0;
+      let totalQty = 0;
+      let unit = '';
+
       e.visits?.forEach(visit => {
         const ferts = typeof visit.fertilizers_applied === 'string' ? JSON.parse(visit.fertilizers_applied || '[]') : (visit.fertilizers_applied || []);
         const pests = typeof visit.pesticides_applied === 'string' ? JSON.parse(visit.pesticides_applied || '[]') : (visit.pesticides_applied || []);
         
-        const hasProduct = ferts.some((f: any) => f.name?.trim() === productName) || 
-                           pests.some((p: any) => p.name?.trim() === productName);
-        if (hasProduct) count++;
+        // Match fertilizers
+        ferts.forEach((f: any) => { 
+          if (f.name?.trim() === productName) {
+            count++;
+            totalQty += parseFloat(f.quantity || '0');
+            if (f.unit && !unit) unit = f.unit; // Grab the unit (e.g., L, ml, kg)
+          } 
+        });
+        // Match pesticides
+        pests.forEach((p: any) => { 
+          if (p.name?.trim() === productName) {
+            count++;
+            totalQty += parseFloat(p.quantity || '0');
+            if (p.unit && !unit) unit = p.unit;
+          } 
+        });
       });
-      rowData[e.name] = count;
+      
+      // Store an object containing count, total quantity, and the unit
+      rowData[e.name] = { count, totalQty, unit };
     });
     
     return rowData;
@@ -72,7 +106,7 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
           <thead className="bg-muted border-b sticky top-0 z-20">
             <tr>
               <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap sticky left-0 top-0 bg-muted z-30 border-r border-b shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-border">
-                Product Name (Usage Count)
+                Product Name
               </th>
               {entities.map((e, i) => (
                 <th key={i} className={`px-4 py-3 font-bold whitespace-nowrap min-w-[180px] text-center border-r border-b sticky top-0 z-20 outline outline-1 outline-border ${i === 0 ? 'bg-orange-50 text-orange-700 shadow-inner' : 'bg-muted text-foreground'}`}>
@@ -87,11 +121,32 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
                 <td className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap sticky left-0 bg-white z-10 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] outline outline-1 outline-border">
                   {row.label}
                 </td>
-                {entities.map((e, colIdx) => (
-                  <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 font-medium ${colIdx === 0 ? 'bg-orange-50/30' : ''}`}>
-                    {row[e.name] > 0 ? <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">{row[e.name]} Uses</Badge> : <span className="text-muted-foreground/30">—</span>}
-                  </td>
-                ))}
+                {entities.map((e, colIdx) => {
+                  const stats = row[e.name];
+                  const count = stats.count;
+                  const totalInEntity = entityTotals[e.name];
+                  
+                  const percentage = totalInEntity > 0 ? Math.round((count / totalInEntity) * 100) : 0;
+
+                  return (
+                    <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 font-medium ${colIdx === 0 ? 'bg-orange-50/30' : ''}`}>
+                      {count > 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                            {count} Uses ({percentage}%)
+                          </Badge>
+                          {stats.totalQty > 0 && (
+                            <span className="text-[11px] font-bold text-emerald-800">
+                              Total: {stats.totalQty} {stats.unit}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/30">—</span>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -100,7 +155,6 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
     </div>
   );
 };
-
 
 // ----------------------------------------------------------------------
 // 2. MAIN ANALYTICS TABLE COMPONENT
