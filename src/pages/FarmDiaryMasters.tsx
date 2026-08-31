@@ -78,7 +78,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const [optionInput, setOptionInput] = useState(''); 
   
   const [newGls, setNewGls] = useState({
-    id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: ''
+    id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '', uom: '', dealer_rate: ''
   });
   const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -416,8 +416,21 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   const openEditCrop = (c: any) => { setNewCrop({ id: c.id, name: c.crop_name, category: c.crop_category }); setIsAddingNewCategory(false); setIsCropOpen(true); };
   const openEditStage = (s: any) => { setNewStage({ id: s.id, name: s.stage_name }); setIsStageOpen(true); };
   const openEditUom = (u: any) => { setNewUom({ id: u.id, name: u.uom_name, symbol: u.uom_symbol }); setIsUomOpen(true); };
-  const openEditGls = (g: any) => { setNewGls({ id: g.id, name: g.product_name, ingredients: g.active_ingredients || '', description: g.description || '', benefits: g.benefits || '', impact: g.impact || '', image_url: g.image_url || '' }); setIsGlsOpen(true); };
-  
+  const openEditGls = (g: any) => { 
+    setNewGls({ 
+      id: g.id, 
+      name: g.product_name, 
+      ingredients: g.active_ingredients || '', 
+      description: g.description || '', 
+      benefits: g.benefits || '', 
+      impact: g.impact || '', 
+      image_url: g.image_url || '',
+      uom: g.uom || '',
+      dealer_rate: g.dealer_rate || ''
+    }); 
+    setIsGlsOpen(true); 
+  };
+
   const openEditParam = async (p: any) => { 
     const { data } = await db.from('parameter_uom_mapping').select('*').eq('parameter_id', p.id);
     const mappedUoms = data ? data.map((d: any) => d.uom_id) : [];
@@ -521,14 +534,26 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
   };
 
   const handleAddGls = async () => {
-    if (!newGls.name.trim()) return toast({ title: "Error", description: "Product name is required.", variant: "destructive" });
-    const payload = { product_name: newGls.name, active_ingredients: newGls.ingredients, description: newGls.description, benefits: newGls.benefits, impact: newGls.impact, image_url: newGls.image_url };
-    
-    if (newGls.id) await db.from('master_gls_products').update(payload).eq('id', newGls.id);
-    else await db.from('master_gls_products').insert([payload]);
-    
-    setIsGlsOpen(false); setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' }); fetchMasters();
+  if (!newGls.name.trim()) return toast({ title: "Error", description: "Product name is required.", variant: "destructive" });
+  
+  const payload = { 
+    product_name: newGls.name, 
+    active_ingredients: newGls.ingredients, 
+    description: newGls.description, 
+    benefits: newGls.benefits, 
+    impact: newGls.impact, 
+    image_url: newGls.image_url,
+    uom: newGls.uom || null,
+    dealer_rate: newGls.dealer_rate ? Number(newGls.dealer_rate) : null
   };
+  
+  if (newGls.id) await db.from('master_gls_products').update(payload).eq('id', newGls.id);
+  else await db.from('master_gls_products').insert([payload]);
+  
+  setIsGlsOpen(false); 
+  setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '', uom: '', dealer_rate: '' }); 
+  fetchMasters();
+};
 
   const openUomMapping = async (param: any) => {
     setActiveParam(param);
@@ -942,7 +967,7 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                   <CardDescription>Registry of products used in applications with rich descriptive parameters.</CardDescription>
                 </div>
                 <Dialog open={isGlsOpen} onOpenChange={(open) => {
-                  if (!open) setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '' });
+                  if (!open) setNewGls({ id: '', name: '', ingredients: '', description: '', benefits: '', impact: '', image_url: '', uom: '', dealer_rate: '' });
                   setIsGlsOpen(open);
                 }}>
                   {access.can_edit && <DialogTrigger asChild><Button size="sm" className="gap-1.5 shadow-sm"><Plus className="h-4 w-4" /> Add Product</Button></DialogTrigger>}
@@ -976,7 +1001,21 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                           <Label className="text-sm font-semibold text-foreground">Active Ingredients</Label>
                           <Input placeholder="e.g., Azotobacter 20%" value={newGls.ingredients} onChange={e => setNewGls({...newGls, ingredients: e.target.value})} className="bg-white" />
                         </div>
+                        
+
+                        
                       </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div className="space-y-2">
+    <Label className="text-sm font-semibold text-foreground">Unit of Measurement (UOM)</Label>
+    <Input placeholder="e.g., 1 Litre, 500 ml" value={newGls.uom} onChange={e => setNewGls({...newGls, uom: e.target.value})} className="bg-white" />
+  </div>
+  <div className="space-y-2">
+    <Label className="text-sm font-semibold text-foreground">Dealer Rate (₹)</Label>
+    <Input type="number" placeholder="e.g., 1250" value={newGls.dealer_rate} onChange={e => setNewGls({...newGls, dealer_rate: e.target.value})} className="bg-white" />
+  </div>
+</div>
                       <div className="space-y-2">
                         <Label className="text-sm font-semibold text-foreground">Product Description</Label>
                         <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 custom-scrollbar"
@@ -1007,14 +1046,16 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader className="bg-muted/50">
-                      <TableRow>
-                        <TableHead className="pl-6 font-semibold w-[25%]">Product</TableHead>
-                        <TableHead className="font-semibold w-[15%]">Active Ingredients</TableHead>
-                        <TableHead className="font-semibold w-[20%]">Description</TableHead>
-                        <TableHead className="font-semibold w-[20%]">Benefits</TableHead>
-                        <TableHead className="font-semibold w-[15%]">Impact</TableHead>
-                        <TableHead className="font-semibold w-[5%] text-right pr-6">Actions</TableHead>
-                      </TableRow>
+                    <TableRow>
+  <TableHead className="pl-6 font-semibold w-[20%]">Product</TableHead>
+  <TableHead className="font-semibold w-[10%]">UOM</TableHead>
+  <TableHead className="font-semibold w-[10%]">Rate (₹)</TableHead>
+  <TableHead className="font-semibold w-[15%]">Active Ingredients</TableHead>
+  <TableHead className="font-semibold w-[15%]">Description</TableHead>
+  <TableHead className="font-semibold w-[15%]">Benefits</TableHead>
+  <TableHead className="font-semibold w-[10%]">Impact</TableHead>
+  <TableHead className="font-semibold w-[5%] text-right pr-6">Actions</TableHead>
+</TableRow>
                     </TableHeader>
                     <TableBody>
                       {glsProducts.length === 0 && (
@@ -1040,6 +1081,8 @@ export default function FarmDiaryMasters({ onLogout }: { onLogout: () => void })
                               <span className="font-semibold text-foreground">{g.product_name}</span>
                             </div>
                           </TableCell>
+                          <TableCell className="align-top pt-4"><Badge variant="secondary" className="font-normal bg-slate-100 text-slate-700 border-slate-200">{g.uom || 'N/A'}</Badge></TableCell>
+                          <TableCell className="align-top pt-4"><Badge variant="secondary" className="font-normal bg-slate-100 text-slate-700 border-slate-200">{g.dealer_rate || 'N/A'}</Badge></TableCell>
                           <TableCell className="align-top pt-4"><Badge variant="secondary" className="font-normal bg-slate-100 text-slate-700 border-slate-200">{g.active_ingredients || 'N/A'}</Badge></TableCell>
                           <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-muted-foreground" title={g.description || ''}>{g.description || '—'}</div></TableCell>
                           <TableCell className="align-top pt-4"><div className="line-clamp-2 text-xs text-slate-600" title={g.benefits || ''}>{g.benefits || '—'}</div></TableCell>
