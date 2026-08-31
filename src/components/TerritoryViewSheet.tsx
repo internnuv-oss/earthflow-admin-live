@@ -168,9 +168,45 @@ export const ProductAnalyticsTable = ({ entities }: { entities: { name: string, 
 // ----------------------------------------------------------------------
 // 2. MAIN ANALYTICS TABLE COMPONENT
 // ----------------------------------------------------------------------
-export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number, externalFarmCardCount?: { total: number, drafts: number, completed: number }, externalFarmDiaryCount?: number }[] }) => {
+const buildTotalVisitsMetric = (visitCountsByFarmer?: Record<string, number>) => {
+  const counts = visitCountsByFarmer || {};
+  const farmerIds = Object.keys(counts);
+
+  if (farmerIds.length === 0) {
+    return {
+      total: 0,
+      buckets: [{ visitCount: 0, farmerCount: 0 }],
+      display: '0(0 visit-0 farmer)'
+    };
+  }
+
+  let totalVisits = 0;
+  const bucketMap = new Map<number, number>();
+
+  farmerIds.forEach((id) => {
+    const visitCount = counts[id] || 0;
+    totalVisits += visitCount;
+    bucketMap.set(visitCount, (bucketMap.get(visitCount) || 0) + 1);
+  });
+
+  const buckets = Array.from(bucketMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([visitCount, farmerCount]) => ({ visitCount, farmerCount }));
+
+  const parts = buckets.map(
+    ({ visitCount, farmerCount }) => `${visitCount} visit-${farmerCount} farmer`
+  );
+
+  return {
+    total: totalVisits,
+    buckets,
+    display: `${totalVisits}(${parts.join(', ')})`
+  };
+};
+
+export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers: any[], villageCount: number, externalFarmCardCount?: { total: number, drafts: number, completed: number }, externalFarmDiaryCount?: number, visitCountsByFarmer?: Record<string, number> }[] }) => {
   
-  const computeMetrics = (farmers: any[], villageCount: number, externalFarmCardCount?: { total: number, drafts: number, completed: number }, externalFarmDiaryCount?: number) => {
+  const computeMetrics = (farmers: any[], villageCount: number, externalFarmCardCount?: { total: number, drafts: number, completed: number }, externalFarmDiaryCount?: number, visitCountsByFarmer?: Record<string, number>) => {
     
     let farmCardDisplay = '0';
     if (externalFarmCardCount) {
@@ -188,12 +224,15 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
       farmDiaryDisplay = inlineFarmDiaryCount.toString();
     }
 
+    const totalVisits = buildTotalVisitsMetric(visitCountsByFarmer);
+
     if (!farmers || farmers.length === 0) {
       return {
         villageCount, totalFarmers: 0, completed: 0, drafts: 0, 
         fsppCount: '0',
         farmCardCount: farmCardDisplay, 
         farmDiaryCount: farmDiaryDisplay,
+        totalVisits,
         avgScore: 0, totalLand: '0', committedLand: '0', avgLand: '0', 
         topCrops: '—', topSoils: '—', primaryStage: '—', lastVisited: '—'
       };
@@ -309,7 +348,8 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
       villageCount, totalFarmers, completed, drafts, 
       fsppCount: fsppCountDisplay,
       farmCardCount, 
-      farmDiaryCount, 
+      farmDiaryCount,
+      totalVisits,
       avgScore, totalLand: totalLand.toFixed(1), committedLand: committedLand.toFixed(1), avgLand,
       topCrops, topSoils, primaryStage, lastVisited
     };
@@ -336,18 +376,29 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     return sum + ((e.farmers || []).filter(f => f.has_farm_diary === true || (f.farm_diary && f.farm_diary.length > 0)).length);
   }, 0);
 
+  // Regroup unique farmers across all entities for TOTAL (ALL) visit stats
+  const totalVisitCountsByFarmer: Record<string, number> = {};
+  entities.forEach((e) => {
+    Object.entries(e.visitCountsByFarmer || {}).forEach(([farmerId, visitCount]) => {
+      if (totalVisitCountsByFarmer[farmerId] === undefined) {
+        totalVisitCountsByFarmer[farmerId] = visitCount;
+      }
+    });
+  });
+
   const renderEntities = [
     { 
       name: "TOTAL (ALL)", 
       farmers: allFarmers, 
       villageCount: totalVillageCount, 
       externalFarmCardCount: totalFarmCardsObj,
-      externalFarmDiaryCount: totalFarmDiaries
+      externalFarmDiaryCount: totalFarmDiaries,
+      visitCountsByFarmer: totalVisitCountsByFarmer
     },
     ...entities
   ];
 
-  const columnData = renderEntities.map(e => computeMetrics(e.farmers, e.villageCount, e.externalFarmCardCount, e.externalFarmDiaryCount));
+  const columnData = renderEntities.map(e => computeMetrics(e.farmers, e.villageCount, e.externalFarmCardCount, e.externalFarmDiaryCount, e.visitCountsByFarmer));
 
   const rows = [
     { label: "Number of Villages", key: "villageCount" },
@@ -361,6 +412,7 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     { label: "Average Land/Farmer (Acres)", key: "avgLand" },
     { label: "Farm Card Built", key: "farmCardCount" },  
     { label: "Farm Diary Built", key: "farmDiaryCount" },
+    { label: "Total Visits", key: "totalVisits" },
     { label: "Major Crops", key: "topCrops" },
     { label: "Soil Type & %", key: "topSoils" },
     { label: "Biofertilizer Stage", key: "primaryStage" },
@@ -376,7 +428,12 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
     const rowsHtml = rows.map((row) => {
       const rowDataHtml = columnData.map((data, idx) => {
         const isTotalCol = idx === 0;
-        return `<td style="${isTotalCol ? 'background-color: #f0fdf4; font-weight: bold;' : ''}">${data[row.key as keyof typeof data]}</td>`;
+        const rawValue = data[row.key as keyof typeof data];
+        const cellValue =
+          row.key === 'totalVisits' && rawValue && typeof rawValue === 'object' && 'display' in rawValue
+            ? (rawValue as { display: string }).display
+            : rawValue;
+        return `<td style="${isTotalCol ? 'background-color: #f0fdf4; font-weight: bold;' : ''}">${cellValue}</td>`;
       }).join('');
       return `<tr>
           <td><strong>${row.label}</strong></td>
@@ -464,12 +521,24 @@ export const AnalyticsTable = ({ entities }: { entities: { name: string, farmers
                   </td>
                   {columnData.map((data, colIdx) => {
                     const isTotalCol = colIdx === 0;
+                    const isTotalVisits = row.key === 'totalVisits';
                     return (
                       <td key={colIdx} className={`px-4 py-3 text-center border-r last:border-r-0 text-foreground/90 
-                        ${['topCrops', 'topSoils', 'primaryStage', 'fsppCount'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : 'whitespace-nowrap'}
+                        ${['topCrops', 'topSoils', 'primaryStage', 'fsppCount'].includes(row.key) ? 'text-xs min-w-[220px] max-w-[300px] break-words whitespace-normal' : isTotalVisits ? 'whitespace-normal' : 'whitespace-nowrap'}
                         ${isTotalCol ? 'bg-primary/[0.03] font-bold text-primary border-primary/20' : 'font-medium'}`}
                       >
-                        {data[row.key as keyof typeof data]}
+                        {isTotalVisits ? (
+                          <div className="leading-snug">
+                            <div>{data.totalVisits.total}</div>
+                            {data.totalVisits.buckets.map((bucket) => (
+                              <div key={`${bucket.visitCount}-${bucket.farmerCount}`}>
+                                {bucket.visitCount} visit-{bucket.farmerCount} farmer
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <>{data[row.key as keyof typeof data]}</>
+                        )}
                       </td>
                     );
                   })}
@@ -756,6 +825,23 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
     return relevantDiaries.flatMap(fd => fd.mandatory_base_visits || []);
   };
 
+  // farmer_id → count of mandatory_base_visits rows (farmers with diaries but 0 visits included)
+  const getVisitCountsByFarmerId = (farmersList: any[]) => {
+    const ids = new Set(farmersList.map(f => f.id));
+    const relevantDiaries = farmDiaries.filter(fd => ids.has(fd.farmer_id));
+    const counts: Record<string, number> = {};
+
+    relevantDiaries.forEach((fd: any) => {
+      if (!fd.farmer_id) return;
+      if (counts[fd.farmer_id] === undefined) {
+        counts[fd.farmer_id] = 0;
+      }
+      counts[fd.farmer_id] += (fd.mandatory_base_visits || []).length;
+    });
+
+    return counts;
+  };
+
   if (!se) return null;
 
   return (
@@ -854,7 +940,8 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                           farmers: getFarmersForRoute(route),
                           villageCount: getVillageCountForRoute(route),
                           externalFarmCardCount: getFarmCardMetricsForFarmers(getFarmersForRoute(route)),
-                          externalFarmDiaryCount: getFarmDiaryMetricsForFarmers(getFarmersForRoute(route))
+                          externalFarmDiaryCount: getFarmDiaryMetricsForFarmers(getFarmersForRoute(route)),
+                          visitCountsByFarmer: getVisitCountsByFarmerId(getFarmersForRoute(route))
                         }))} 
                       />
                     </TabsContent>
@@ -934,7 +1021,8 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                           farmers: getFarmersForVillage(v),
                           villageCount: 1,
                           externalFarmCardCount: getFarmCardMetricsForFarmers(getFarmersForVillage(v)),
-                          externalFarmDiaryCount: getFarmDiaryMetricsForFarmers(getFarmersForVillage(v)) 
+                          externalFarmDiaryCount: getFarmDiaryMetricsForFarmers(getFarmersForVillage(v)),
+                          visitCountsByFarmer: getVisitCountsByFarmerId(getFarmersForVillage(v))
                         }))} 
                       />
                     </TabsContent>
@@ -973,13 +1061,14 @@ export const TerritoryViewSheet = ({ se, open, onClose }: Props) => {
                     
                     <TabsContent value="analytics" className="outline-none">
                       <AnalyticsTable 
-                        entities={[{
-                          name: activeVillage,
-                          farmers: getFarmersForVillage(activeVillage),
-                          villageCount: 1,
-                          externalFarmCardCount: getFarmCardMetricsForFarmers(getFarmersForVillage(activeVillage)),
-                          externalFarmDiaryCount: getFarmDiaryMetricsForFarmers(getFarmersForVillage(activeVillage))
-                        }]} 
+                        entities={getFarmersForVillage(activeVillage).map((farmer: any) => ({
+                          name: farmer.full_name || 'Unknown Farmer',
+                          farmers: [farmer],
+                          villageCount: 0,
+                          externalFarmCardCount: getFarmCardMetricsForFarmers([farmer]),
+                          externalFarmDiaryCount: getFarmDiaryMetricsForFarmers([farmer]),
+                          visitCountsByFarmer: getVisitCountsByFarmerId([farmer])
+                        }))} 
                       />
                     </TabsContent>
 

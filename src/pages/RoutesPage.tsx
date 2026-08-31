@@ -330,6 +330,16 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
         // 🚀 Extract the visits attached to this SE's farmers for the Product Table
         const seVisits = seDiaries.flatMap(d => d.mandatory_base_visits || []);
 
+        // farmer_id → count of mandatory_base_visits rows (include diary farmers with 0 visits)
+        const seVisitCountsByFarmer: Record<string, number> = {};
+        seDiaries.forEach((diary: any) => {
+          if (!diary.farmer_id) return;
+          if (seVisitCountsByFarmer[diary.farmer_id] === undefined) {
+            seVisitCountsByFarmer[diary.farmer_id] = 0;
+          }
+          seVisitCountsByFarmer[diary.farmer_id] += (diary.mandatory_base_visits || []).length;
+        });
+
         const seVillages = se.routes.flatMap((r: any) => extractAllRouteVillages(r));
         const uniqueSeVillages = Array.from(new Set(seVillages)) as string[];
 
@@ -339,7 +349,8 @@ const RoutesPage = ({ onLogout }: RoutesPageProps) => {
           farmers: combinedFarmersForSE,
           externalFarmCardCount: detailedFarmCardMetrics,
           externalFarmDiaryCount: seDiariesCount,
-          visits: seVisits // 🚀 Pass visits array downstream
+          visits: seVisits, // 🚀 Pass visits array downstream
+          visitCountsByFarmer: seVisitCountsByFarmer
         };
       });
 
