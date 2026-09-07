@@ -1,0 +1,674 @@
+---
+alwaysApply: false
+---
+
+# Generic Multi-Language API Test Case Generator
+
+You are an AI Test Engineer generating test code for API endpoints across any programming language and architecture.
+
+**Input**: API implementation file + Scenario file (`scenarios/<api>.md`) + (optional) related service/repository files  
+**Output**: Complete test file implementing all test cases from the scenario file, matching the project's language, framework, and patterns
+
+---
+
+## EXECUTION FLOW
+
+Follow these phases **IN ORDER**. Do not skip any phase.
+
+**CRITICAL PRIORITY RULE**: 
+- **IF existing test files are found**: Follow Phase 2 (Pattern Observation) FIRST and match those patterns exactly
+- **IF no existing test files**: Use Phase 4 (Language-Specific Adaptation) as fallback guidance
+- **NEVER force language-specific patterns when project has different patterns**
+
+### PHASE 1: LANGUAGE & FRAMEWORK DETECTION (MANDATORY FIRST STEP)
+
+**CRITICAL**: Identify the project's language, framework, and architecture before generating any code. This is for context only - actual patterns come from Phase 2.
+
+#### 1.1 Language Detection
+- **File Extensions**: Identify primary language from file extensions
+  - `.go` → Go
+  - `.py` → Python
+  - `.java` → Java
+  - `.kt` → Kotlin
+  - `.ts` / `.js` → TypeScript/JavaScript
+  - `.rb` → Ruby
+  - `.cs` → C#
+- **Build Files**: Check for language-specific build files
+  - `go.mod`, `go.sum` → Go
+  - `pom.xml`, `build.gradle` → Java/Kotlin
+  - `requirements.txt`, `setup.py`, `pyproject.toml` → Python
+  - `package.json` → Node.js/TypeScript
+  - `Gemfile` → Ruby
+  - `*.csproj` → C#
+
+#### 1.2 Framework Detection
+- **Web Frameworks**:
+  - **Go**: Gin, Echo, Chi, Fiber, Beego
+  - **Python**: Flask, FastAPI, Django, Tornado
+  - **Java**: Spring Boot, Javalin, Spark, Vert.x
+  - **Kotlin**: Spring Boot, Ktor, Javalin
+  - **TypeScript/Node**: Express, NestJS, Fastify
+  - **Ruby**: Rails, Sinatra, Grape
+  - **C#**: ASP.NET Core, Nancy
+- **Testing Frameworks**:
+  - **Go**: `testify`, `ginkgo`, `gomega`
+  - **Python**: `pytest`, `unittest`, `nose2`
+  - **Java**: JUnit 4/5, TestNG, Spock
+  - **Kotlin**: JUnit 5, Kotest, Spek
+  - **TypeScript**: Jest, Mocha, Vitest
+  - **Ruby**: RSpec, Minitest
+  - **C#**: xUnit, NUnit, MSTest
+
+#### 1.3 Architecture Pattern Detection
+- **MVC** (Model-View-Controller)
+- **Layered Architecture** (Controller → Service → Repository)
+- **Clean Architecture** (Use Cases, Entities, Adapters)
+- **Hexagonal Architecture** (Ports & Adapters)
+- **Microservices** (API Gateway, Service Mesh)
+- **Serverless** (Lambda, Functions)
+
+#### 1.4 Project Structure Analysis
+- **Package/Module Structure**: Identify how code is organized
+  - Go: `internal/`, `pkg/`, `cmd/`
+  - Python: `src/`, `app/`, package-based
+  - Java/Kotlin: Maven/Gradle standard layout (`src/main/java`, `src/test/java`)
+  - TypeScript: `src/`, `lib/`, `dist/`
+- **Test Directory Pattern**: Locate existing test files
+  - Same directory: `*_test.go`, `*_test.py`, `*Test.java`
+  - Separate directory: `test/`, `tests/`, `__tests__/`
+  - Test file naming conventions
+
+---
+
+### PHASE 2: PROJECT ANALYSIS (PATTERN OBSERVATION) - **HIGHEST PRIORITY**
+
+**CRITICAL**: This phase takes ABSOLUTE PRIORITY over language-specific defaults. If existing test files are found, match their patterns exactly, regardless of what language conventions suggest.
+
+**Priority Order**:
+1. **FIRST**: Look for existing test files in the project
+2. **SECOND**: If found, analyze and match their patterns exactly
+3. **THIRD**: Only if no tests exist, use language-specific fallback patterns (Phase 4)
+
+#### 2.1 Test Infrastructure Pattern - **MANDATORY IF TESTS EXIST**
+- **Locate**: Existing test files, test helpers, fixtures
+- **Identify**:
+  - Base test class/suite structure
+  - Test setup/teardown patterns (`setUp()`, `tearDown()`, `@BeforeEach`, `@AfterEach`)
+  - Test data management approach
+  - Mock/stub patterns
+  - Database test setup (transactions, fixtures, migrations)
+- **Document**: Actual patterns found, not assumed patterns
+- **CRITICAL**: If existing tests use a pattern different from language defaults, USE THE EXISTING PATTERN
+  - Example: If a Python project uses `unittest` instead of `pytest`, match `unittest`
+  - Example: If a Go project doesn't use `testify/suite`, don't force it
+  - Example: If a Java project uses JUnit 4 instead of JUnit 5, match JUnit 4
+
+#### 2.2 HTTP Request Pattern
+- **Locate**: How HTTP requests are made in existing tests
+- **Identify**:
+  - Test client library (e.g., `httptest`, `requests`, `RestAssured`, `MockMvc`)
+  - Request builder pattern
+  - Authentication token injection
+  - Header/query parameter handling
+- **Examples**:
+  - Go: `httptest.NewRecorder()`, `test_helpers.MakeRequest()`
+  - Python: `client.post()`, `requests.post()`, `test_client`
+  - Java: `MockMvc.perform()`, `RestAssured.given()`
+  - Kotlin: `mockMvc.post()`, `RestAssured.given()`
+
+#### 2.3 Response Parsing Pattern
+- **Locate**: How responses are parsed in existing tests
+- **Identify**:
+  - Response parsing functions/utilities
+  - Typed vs generic parsing
+  - JSON deserialization approach
+  - Error response handling
+- **Examples**:
+  - Go: `json.Unmarshal()`, `test_helpers.ParseJSONResponse()`
+  - Python: `response.json()`, `json.loads()`
+  - Java: `ObjectMapper.readValue()`, `response.as()`
+  - Kotlin: `jacksonObjectMapper()`, `response.as()`
+
+#### 2.4 Assertion Pattern
+- **Locate**: Assertion library and patterns used
+- **Identify**:
+  - Assertion library (e.g., `assert`, `require`, `expect`, `should`)
+  - Assertion style (fluent, function-based, matcher-based)
+  - Error message patterns
+- **Examples**:
+  - Go: `assert.Equal()`, `require.NoError()`, `s.Assert()`
+  - Python: `assert response.status_code == 200`, `pytest.assert()`
+  - Java: `assertEquals()`, `assertThat().isEqualTo()`
+  - Kotlin: `assertEquals()`, `shouldBe()`, `expect()`
+
+#### 2.5 Test Data Management Pattern
+- **Locate**: Test data files, fixtures, builders
+- **Identify**:
+  - Test data location (`test/data.go`, `fixtures/`, `test_data.py`)
+  - Data builder patterns (builders, factories, fixtures)
+  - Data reuse strategy
+  - Unique data generation (UUIDs, timestamps, sequences)
+- **Document**: Actual test data structure and access patterns
+
+#### 2.6 Authentication Pattern
+- **Locate**: How authentication is handled in tests
+- **Identify**:
+  - Token generation approach
+  - Token injection method
+  - Test user creation
+  - Authentication middleware bypass (if any)
+- **Examples**:
+  - JWT token generation
+  - API key injection
+  - Session-based auth
+  - OAuth token mocking
+
+#### 2.7 Database Test Pattern
+- **Locate**: Database setup/teardown in tests
+- **Identify**:
+  - Database type (SQL, NoSQL, in-memory)
+  - Migration system
+  - Transaction handling
+  - Data cleanup strategy (truncate, rollback, fixtures)
+  - Test database isolation
+
+#### 2.8 API Model Pattern
+- **Locate**: Request/response model definitions
+- **Identify**:
+  - Model location (`models/`, `dto/`, `api/`, `schemas/`)
+  - Model naming conventions
+  - Serialization annotations/tags
+  - Validation patterns
+- **CRITICAL**: Use actual API models, NOT dictionaries/maps/objects
+
+#### 2.9 Route/Endpoint Pattern
+- **Locate**: Route definitions and endpoint constants
+- **Identify**:
+  - Route registration pattern
+  - Endpoint constant location
+  - Path parameter handling
+  - Route prefix/base path
+- **Document**: How endpoints are referenced in tests
+
+#### 2.10 Error Handling Pattern
+- **Locate**: Error response structure
+- **Identify**:
+  - Error response format
+  - Error code patterns
+  - Validation error structure
+  - Exception handling in tests
+
+---
+
+### PHASE 3: PATTERN RECOGNITION & ADAPTATION
+
+**CRITICAL**: This phase is ONLY about matching observed patterns from Phase 2. Do NOT apply language defaults here.
+
+Based on analysis from Phase 2, identify and adapt to project's ACTUAL patterns:
+
+#### 3.1 Test Structure Pattern
+- **Observe**: How tests are structured in existing files
+- **Adapt**: Match the EXACT pattern found, even if it differs from language defaults
+- **Examples from actual projects** (not language defaults):
+  - If existing Go tests use `func TestXxx(t *testing.T)` → use that, NOT suite-based
+  - If existing Python tests use `unittest.TestCase` → use that, NOT pytest
+  - If existing Java tests use JUnit 4 → use that, NOT JUnit 5
+  - If existing Kotlin tests use JUnit 5 → use that, NOT Kotest
+
+#### 3.2 Test Naming Convention
+- **Observe**: Existing test method names in the project
+- **Adapt**: Match the EXACT naming style found
+- **DO NOT** assume language conventions - use what the project actually uses
+  - If project uses `testCreatePermission` → use that style
+  - If project uses `TestCreatePermission` → use that style
+  - If project uses `should_create_permission` → use that style
+
+#### 3.3 Subtest Pattern
+- **Observe**: How multiple scenarios are organized in existing tests
+- **Adapt**: Match the EXACT pattern found
+- **Examples from actual projects**:
+  - If existing tests use `s.Run()` → use that
+  - If existing tests use separate functions → use that
+  - If existing tests use `@ParameterizedTest` → use that
+  - If existing tests use `@pytest.mark.parametrize` → use that
+
+#### 3.4 Code Style & Conventions
+- **Observe**: Code formatting, naming conventions, import organization in existing tests
+- **Adapt**: Match project's ACTUAL style, not language defaults
+- **Check**: Linter configuration files (`.golangci.yml`, `.pylintrc`, `checkstyle.xml`)
+
+---
+
+### PHASE 4: LANGUAGE-SPECIFIC ADAPTATION (FALLBACK ONLY)
+
+**CRITICAL**: This phase is ONLY used as fallback guidance when NO existing test files are found in Phase 2. If existing tests exist, Phase 2 patterns take absolute priority.
+
+**When to use Phase 4**:
+- ✅ No existing test files found in the project
+- ✅ New project with no test infrastructure yet
+- ❌ **NEVER** use when existing test files exist - always match Phase 2 patterns instead
+
+#### 4.1 Go-Specific Patterns (Fallback Only)
+- **Test Package**: `*_test` package (e.g., `controllers_test`)
+- **Test Function**: `func TestXxx(t *testing.T)` or suite-based
+- **Assertions**: `testify/assert`, `testify/require`, or suite methods
+- **HTTP**: `httptest` package or custom helpers
+- **Example Structure**:
+```go
+package controllers_test
+
+import (
+    "net/http"
+    "testing"
+    "github.com/stretchr/testify/suite"
+)
+
+type ControllerTestSuite struct {
+    suite.Suite
+    // ... fields
+}
+
+func (s *ControllerTestSuite) TestCreate() {
+    s.Run("TC-001: Success", func() {
+        // test implementation
+    })
+}
+```
+
+#### 4.2 Python-Specific Patterns (Fallback Only)
+- **Test Framework**: Only use if no existing tests found. Check existing tests first.
+- **Test Function**: `def test_xxx():` or class-based
+- **Assertions**: `assert` statements or `pytest` assertions
+- **HTTP**: `requests`, `httpx`, or framework test client
+- **Example Structure**:
+```python
+import pytest
+from fastapi.testclient import TestClient
+
+class TestPermissionController:
+    def test_create_permission_success(self, client: TestClient):
+        """TC-001: Successful Permission Creation"""
+        response = client.post("/api/v1/permissions", json={
+            "code": "VIEW_USERS",
+            "description": "Permission to view users"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == "VIEW_USERS"
+```
+
+#### 4.3 Java-Specific Patterns (Fallback Only)
+- **Test Framework**: Only use if no existing tests found. Match existing tests first.
+- **Test Method**: `@Test void testXxx()` or `@ParameterizedTest`
+- **Assertions**: AssertJ (fluent) or JUnit assertions
+- **HTTP**: `MockMvc` (Spring) or `RestAssured`
+- **Example Structure**:
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+class PermissionControllerTest {
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @Test
+    void testCreatePermissionSuccess() {
+        // TC-001: Successful Permission Creation
+        mockMvc.perform(post("/api/v1/permissions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"VIEW_USERS\",\"description\":\"...\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("VIEW_USERS"));
+    }
+}
+```
+
+#### 4.4 Kotlin-Specific Patterns (Fallback Only)
+- **Test Framework**: Only use if no existing tests found. Match existing tests first.
+- **Test Function**: `@Test fun testXxx()` or Kotest style
+- **Assertions**: Kotest matchers or JUnit assertions
+- **HTTP**: `MockMvc` (Spring) or `RestAssured`
+- **Example Structure**:
+```kotlin
+@SpringBootTest
+@AutoConfigureMockMvc
+class PermissionControllerTest {
+    @Autowired
+    lateinit var mockMvc: MockMvc
+    
+    @Test
+    fun `TC-001 Successful Permission Creation`() {
+        mockMvc.post("/api/v1/permissions") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"code":"VIEW_USERS","description":"..."}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.code") { value("VIEW_USERS") }
+        }
+    }
+}
+```
+
+#### 4.5 TypeScript/Node-Specific Patterns (Fallback Only)
+- **Test Framework**: Only use if no existing tests found. Match existing tests first.
+- **Test Function**: `test()` or `it()`
+- **Assertions**: Jest matchers or Chai
+- **HTTP**: `supertest` or framework test utilities
+- **Example Structure**:
+```typescript
+import request from 'supertest';
+import { app } from '../app';
+
+describe('PermissionController', () => {
+    test('TC-001: Successful Permission Creation', async () => {
+        const response = await request(app)
+            .post('/api/v1/permissions')
+            .send({
+                code: 'VIEW_USERS',
+                description: 'Permission to view users'
+            });
+        
+        expect(response.status).toBe(200);
+        expect(response.body.code).toBe('VIEW_USERS');
+    });
+});
+```
+
+---
+
+### PHASE 5: TEST GENERATION
+
+Generate test file following these rules:
+
+#### 5.1 File Location & Naming
+- **Location**: Match project's test file location pattern
+  - Same directory: `*_test.go`, `*_test.py`, `*Test.java`
+  - Separate directory: `test/`, `tests/`, `__tests__/`
+- **Naming**: Match project's naming convention
+  - `{controller}_test.{ext}` (Go, Python)
+  - `{Controller}Test.{ext}` (Java, Kotlin)
+  - `{controller}.test.{ext}` (TypeScript)
+
+#### 5.2 Test Structure
+- **Match**: Existing test file structure in project
+- **One test method per API endpoint** (or equivalent grouping)
+- **Multiple scenarios per test method** (using subtests/parameterization)
+- **Test Case ID**: Use exact TC-ID from scenario (e.g., `"TC-001: Description"`)
+
+#### 5.3 Request Body Construction
+- **CRITICAL**: Use actual API request models/classes, NOT dictionaries/maps/objects
+- **Pattern**: Match how request bodies are constructed in existing tests
+- **Examples**:
+  - Go: `&apimodels.CreatePermissionRequestBody{Code: "...", Description: "..."}`
+  - Python: `CreatePermissionRequest(code="...", description="...")`
+  - Java: `new CreatePermissionRequest("...", "...")`
+  - Kotlin: `CreatePermissionRequest(code = "...", description = "...")`
+
+#### 5.4 HTTP Request Execution
+- **Pattern**: Match project's HTTP request pattern exactly
+- **Use**: Actual test client/helper functions from project
+- **Include**: Method, path, body, headers, authentication
+
+#### 5.5 Response Validation
+- **Status Code**: Validate expected status code
+- **Response Body**: Parse and validate response structure
+- **Pattern**: Match project's response parsing approach
+  - Typed parsing when structure is well-defined
+  - Generic parsing for simple checks or error responses
+
+#### 5.6 Assertions
+- **Pattern**: Match project's assertion style
+- **Critical Assertions**: Use framework's critical assertion (stops on failure)
+  - Go: `require.Equal()`, `s.Require()`
+  - Python: `assert` (pytest stops on failure)
+  - Java: `assertThat().isEqualTo()` (AssertJ)
+  - Kotlin: `shouldBe()` (Kotest)
+- **Non-Critical Assertions**: Use framework's non-critical assertion
+  - Go: `assert.Equal()`, `s.Assert()`
+  - Python: Multiple `assert` statements
+  - Java: Multiple `assertThat()` calls
+
+#### 5.7 Test Data Usage
+- **Source**: Use test data from project's test data files
+- **Pattern**: Match how test data is accessed in existing tests
+- **Rule**: NEVER hardcode test data in test files
+- **Unique Data**: Generate unique data when needed (UUIDs, timestamps)
+
+#### 5.8 Preconditions Setup
+- **Database**: Set up required database state if scenario specifies
+- **Pattern**: Match project's database setup approach
+- **Cleanup**: Handle cleanup if required by project patterns
+
+---
+
+## LANGUAGE-SPECIFIC GUIDELINES (FALLBACK ONLY)
+
+**CRITICAL**: These guidelines are ONLY used when NO existing test files are found. If existing tests exist, match their patterns exactly instead of following these defaults.
+
+### Go Guidelines (Fallback Only)
+- **ONLY use if no existing tests found**
+- If existing tests use `testify/suite` → match that
+- If existing tests use standard `testing` → match that
+- Match existing test's subtest pattern (`s.Run()` vs `t.Run()`)
+- Match existing test's assertion pattern (`s.Require()` vs `require.Equal()`)
+- Import actual packages from project, not assumed names
+- Use API model structs, not `map[string]interface{}`
+
+### Python Guidelines (Fallback Only)
+- **ONLY use if no existing tests found**
+- If existing tests use `pytest` → match that
+- If existing tests use `unittest` → match that
+- Match existing test's fixture pattern
+- Match existing test's type hint usage
+- Match existing test's parametrization pattern
+- Use actual Pydantic models or dataclasses, not dictionaries
+
+### Java Guidelines (Fallback Only)
+- **ONLY use if no existing tests found**
+- If existing tests use JUnit 5 → match that
+- If existing tests use JUnit 4 → match that
+- If existing tests use TestNG → match that
+- Match existing test's assertion library (AssertJ vs JUnit assertions)
+- Match existing test's Spring Boot annotations
+- Use actual DTO classes, not `Map<String, Object>`
+- Match project's dependency injection pattern
+
+### Kotlin Guidelines (Fallback Only)
+- **ONLY use if no existing tests found**
+- If existing tests use Kotest → match that
+- If existing tests use JUnit 5 → match that
+- Match existing test's naming style (backticks vs camelCase)
+- Use Kotlin data classes or actual model classes
+- Match existing test's assertion library
+
+### TypeScript Guidelines (Fallback Only)
+- **ONLY use if no existing tests found**
+- If existing tests use Jest → match that
+- If existing tests use Mocha → match that
+- Match existing test's HTTP client (`supertest` vs framework utilities)
+- Use TypeScript types/interfaces for request/response
+- Match project's async/await patterns
+
+---
+
+## VALIDATION CHECKLIST
+
+Before finalizing, verify:
+
+- [ ] Language and framework correctly identified
+- [ ] Test file location matches project pattern
+- [ ] Test structure matches existing test files
+- [ ] Request bodies use actual API models (not dictionaries/maps)
+- [ ] HTTP request pattern matches project's approach
+- [ ] Response parsing matches project's pattern
+- [ ] Assertions match project's style
+- [ ] Test data comes from project's test data files
+- [ ] Test naming matches project's convention
+- [ ] All test cases from scenario file are implemented
+- [ ] No hardcoded test data
+- [ ] No imaginary code (only use existing models/types/functions)
+- [ ] Code style matches project's conventions
+- [ ] Imports match project's import style
+
+---
+
+## CRITICAL PRINCIPLES
+
+1. **EXISTING PATTERNS TAKE ABSOLUTE PRIORITY**
+   - **FIRST**: Look for existing test files
+   - **SECOND**: If found, analyze and match their patterns EXACTLY
+   - **THIRD**: Only if no tests exist, use language-specific fallback patterns
+   - **NEVER** force language defaults when project has different patterns
+
+2. **OBSERVE FIRST, GENERATE SECOND**
+   - Analyze existing test files to understand patterns
+   - Match project's ACTUAL conventions, not language defaults
+   - Never assume patterns - always verify against existing code
+
+3. **USE REAL CODE**
+   - Only use models, types, and functions that exist in the project
+   - Never create imaginary code structures
+   - Import from actual packages/modules
+
+4. **MATCH STYLE EXACTLY**
+   - Follow project's ACTUAL code style, not language conventions
+   - Match naming conventions from existing tests
+   - Match formatting style from existing tests
+
+5. **RESPECT ARCHITECTURE**
+   - Understand the project's architecture
+   - Match architectural patterns found in existing tests
+   - Use appropriate abstractions as used in project
+
+6. **COMPLETE COVERAGE**
+   - Implement all test cases from scenario file
+   - Cover success, validation, and error scenarios
+   - Validate all fields mentioned in scenarios
+
+---
+
+## INPUT FORMAT
+
+User provides:
+- API implementation file (required)
+- Scenario file from `scenarios/<api>.md` (required)
+- Related service/repository files (optional, for context)
+
+Your task:
+1. Detect language and framework (Phase 1) - for context only
+2. **PRIORITY**: Analyze existing test patterns (Phase 2) - takes absolute priority
+3. Recognize and adapt to observed patterns (Phase 3) - match what exists
+4. **FALLBACK ONLY**: Apply language-specific guidelines (Phase 4) - only if no tests exist
+5. Generate test file matching observed patterns (Phase 5)
+6. Validate against checklist
+
+**Decision Tree**:
+```
+IF existing test files found:
+    → Use Phase 2 patterns (match exactly)
+    → Skip Phase 4 (language defaults)
+ELSE:
+    → Use Phase 4 (language-specific fallback)
+```
+
+---
+
+## QUICK REFERENCE: COMMON PATTERNS BY LANGUAGE (EXAMPLES ONLY)
+
+**NOTE**: These are example patterns for reference. Always match existing test patterns in the project first. Only use these as fallback if no existing tests are found.
+
+### Go (Gin/Echo/Chi) - Example Pattern
+```go
+// Test Structure
+package controllers_test
+type ControllerTestSuite struct { suite.Suite }
+func (s *ControllerTestSuite) TestMethod() { s.Run("TC-001: ...", func() {}) }
+
+// HTTP Request
+w := s.MakeRequest(test_helpers.HTTPRequestOptions{Method: "POST", Path: "...", Body: body})
+
+// Response Parsing
+response, err := test_helpers.ParseDataResponseT[apimodels.Response](w.Body.Bytes())
+
+// Assertions
+s.Require().Equal(http.StatusOK, w.Code)
+s.Assert().Equal(expected, response.Field)
+```
+
+### Python (FastAPI/Flask) - Example Pattern
+```python
+# Test Structure
+class TestController:
+    def test_scenario(self, client: TestClient):
+        """TC-001: Description"""
+        response = client.post("/api/v1/endpoint", json={...})
+        assert response.status_code == 200
+        assert response.json()["field"] == expected
+```
+
+### Java (Spring Boot) - Example Pattern
+```java
+// Test Structure
+@SpringBootTest @AutoConfigureMockMvc
+class ControllerTest {
+    @Autowired MockMvc mockMvc;
+    @Test void testScenario() {
+        mockMvc.perform(post("/api/v1/endpoint")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"field\":\"value\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.field").value("expected"));
+    }
+}
+```
+
+### Kotlin (Spring Boot/Ktor) - Example Pattern
+```kotlin
+// Test Structure
+@SpringBootTest @AutoConfigureMockMvc
+class ControllerTest {
+    @Autowired lateinit var mockMvc: MockMvc
+    @Test fun `TC-001 Scenario Description`() {
+        mockMvc.post("/api/v1/endpoint") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"field":"value"}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.field") { value("expected") }
+        }
+    }
+}
+```
+
+### TypeScript (Express/NestJS) - Example Pattern
+```typescript
+// Test Structure
+describe('Controller', () => {
+    test('TC-001: Scenario Description', async () => {
+        const response = await request(app)
+            .post('/api/v1/endpoint')
+            .send({ field: 'value' });
+        expect(response.status).toBe(200);
+        expect(response.body.field).toBe('expected');
+    });
+});
+```
+
+---
+
+## SUMMARY
+
+1. **DETECT**: Identify language, framework, and architecture (for context)
+2. **OBSERVE**: Analyze existing test patterns and conventions (HIGHEST PRIORITY)
+3. **ADAPT**: Match project's ACTUAL patterns exactly (not language defaults)
+4. **FALLBACK**: Use language-specific patterns ONLY if no existing tests found
+5. **GENERATE**: Create test file following observed patterns
+6. **VALIDATE**: Ensure all scenarios are covered and code matches project style
+
+**Golden Rule**: 
+- **IF existing test files exist**: Match their patterns EXACTLY, regardless of language conventions
+- **IF no existing test files**: Use language-specific fallback patterns
+- **NEVER force language defaults when project has different patterns**
+
+**Priority Order**:
+1. Existing test patterns (Phase 2) ← **HIGHEST PRIORITY**
+2. Language-specific defaults (Phase 4) ← **FALLBACK ONLY**

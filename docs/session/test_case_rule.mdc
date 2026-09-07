@@ -1,0 +1,508 @@
+---
+alwaysApply: false
+---
+
+# Golang Controller Test Code Generator
+
+You are an AI Test Engineer generating Go test code for Controller APIs.
+
+**Input**: Controller file + Scenario file (`scenarios/<api>.md`) + (optional) service/repo interfaces  
+**Output**: Complete `*_test.go` file implementing all test cases from the scenario file
+
+---
+
+## EXECUTION FLOW
+
+Follow these phases **IN ORDER**. Do not skip any phase.
+
+### PHASE 1: PROJECT ANALYSIS (MANDATORY FIRST STEP)
+
+**CRITICAL**: Complete ALL analysis steps before generating any code. This ensures tests match the actual project structure.
+
+#### 1.1 Module & Project Structure
+- Read `go.mod` → Extract module name (e.g., `boilerplate`, `phoenix`)
+- Identify project root directory structure
+- Locate `internal/` directory and subdirectories
+
+#### 1.2 Environment Configuration
+- Search: `.env`, `env_example.txt`, `env.example`
+- Extract:
+  - Database vars: `DB_HOSTNAME`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`, `DB_TYPE`
+  - JWT vars: `JWT_ISSUER`, `PUBLIC_KEY`, `PRIVATE_KEY`
+  - App vars: `APP_PORT`, `ENVIRONMENT`
+- **Document**: List all found variables with purpose
+
+#### 1.3 Database Configuration
+- Locate: Database connection code, config files
+- Identify:
+  - Database type (MySQL, PostgreSQL, SQLite)
+  - Connection method (DSN, connection pool)
+  - Driver package used
+- Check: `internal/core/config` or similar config packages
+
+#### 1.4 Migration System
+- Search: `database/migrations`, `migrations`, `db/migrations`
+- Identify:
+  - Migration tool (golang-migrate, GORM AutoMigrate)
+  - Migration file naming convention
+  - Migration directory path relative to project root
+- Check: How migrations are executed (auto, manual, command)
+
+#### 1.5 Test Infrastructure Pattern
+- Locate: `internal/test/` or `internal/test_helpers/`
+- Identify:
+  - Base suite structure (`BaseSuite`, `AppBaseSuite`)
+  - Test suite initialization pattern
+  - Router setup function
+  - Database setup/teardown methods
+- Check: `internal/test/suite.go` or similar files
+
+#### 1.6 Token Management Pattern
+- Locate: JWT token generation code
+- Search: `internal/common/utils/jwt.go`, `internal/core/middlewares/jwt.go`
+- Extract:
+  - Token generation function name (e.g., `GenerateTokenUsingUserId`)
+  - Token claims structure (e.g., `user`, `iss`, `exp`)
+  - Signing method (RS256, HS256)
+  - Token expiration duration
+  - Issuer source (config or env var)
+- Check: How tokens are generated in test setup
+- **Reference**: Look at `internal/test/suite.go` for test token generation pattern
+
+#### 1.7 Authentication Middleware
+- Locate: JWT middleware files
+- Identify:
+  - Middleware function names
+  - Token extraction pattern (Bearer token format)
+  - Claims extraction method
+  - User ID/context setting pattern
+
+#### 1.8 Models & Database Schema
+- Search: `internal/models/dbmodels/`, `internal/models/`
+- List:
+  - All model files and table names
+  - Table relationships (foreign keys)
+  - Master/reference tables vs transactional tables
+  - Soft delete support (`deleted_at` fields)
+- Categorize:
+  - **Transactional tables**: Should be truncated in tests
+  - **Master tables**: Should NOT be truncated, loaded from migrations
+
+#### 1.9 Application Structure
+- Locate: `internal/core/application/application.go`
+- Identify:
+  - Application interface and implementation
+  - Initialization function (`NewApplication`, `NewApplicationForTesting`)
+  - Dependencies (database, logger, crypto, config)
+  - Application factory pattern
+
+#### 1.10 Router & Routes
+- Locate: `internal/routes/routes.go` or similar
+- Identify:
+  - Router framework (Gin, Echo, Chi)
+  - Route registration pattern
+  - Middleware setup
+  - Route groups and prefixes
+- Check: Router setup function (`SetupRouter`, `AddRoutes`, `RegisterRoutes`)
+
+#### 1.11 API Request Models
+- Locate: `internal/models/apimodels/` directory
+- Identify:
+  - Request body structs (e.g., `CreatePermissionRequestBody`, `UpdateUserRequestBody`)
+  - Request structs (e.g., `CreatePermissionRequest`, `UpdateUserRequest`)
+  - Response structs (e.g., `PermissionResponse`, `UserResponse`)
+  - JSON tags and validation tags on struct fields
+- **CRITICAL**: Use these API models for request bodies, NOT `map[string]interface{}`
+- Check: Controller code to see which API models are used for each endpoint
+
+#### 1.12 Test Data Management
+- Locate: `internal/test/data.go`
+- Identify:
+  - Test data variables (exported, capitalized)
+  - Test data builder pattern
+  - Helper functions for data creation
+  - Preload data functions
+
+#### 1.13 Optional Features Analysis
+- **Audit Logs**: Search for `audit_logs`, `audit_log_details` tables → Only include if exists
+- **Crypto/Encryption**: Search for encryption packages → Only include if exists
+- **Test Migrations**: Search for `internal/test/migrations` → Only include if exists
+
+#### 1.14 Analysis Summary Document
+Create a summary with:
+```
+PROJECT ANALYSIS SUMMARY
+- Module Name: [from go.mod]
+- Database Type: [MySQL/PostgreSQL/SQLite]
+- Migration Path: [relative path]
+- Token Function: [function name]
+- Token Claims: [structure]
+- Token Duration: [hours]
+- Base Suite: [BaseSuite/AppBaseSuite]
+- Router Framework: [Gin/Echo/Chi]
+- Test Data Location: [path]
+- Master Tables: [list]
+- Transactional Tables: [list]
+```
+
+---
+
+### PHASE 2: PATTERN RECOGNITION
+
+Based on analysis, identify the project's patterns:
+
+#### 2.1 Test Suite Pattern
+- **Pattern Type**: `testify/suite` with `BaseSuite` or `AppBaseSuite`
+- **Test Methods**: `func (s *ControllerTestSuite) TestMethodName()`
+- **Subtests**: `s.Run("TC-XXX: Description", func() { ... })`
+- **Assertions**: `s.Require()` and `s.Assert()` (not direct `require`/`assert`)
+
+#### 2.2 Token Generation Pattern
+- **Location**: Usually in `internal/test/suite.go` or `internal/test_helpers/`
+- **Pattern**: Token generated once in `SetupSuite()` or `PreloadBaseData()`
+- **Function**: Use project's actual token generation function
+- **Parameters**: Match project's token claims structure
+- **Example Pattern** (from go-gin-sample):
+  ```go
+  func GenerateAuthToken(app application.Application, userID uuid.UUID) (string, error) {
+      tokenResult := utils.GenerateTokenUsingUserId(app, userID)
+      if tokenResult.IsError() {
+          return "", tokenResult.Error()
+      }
+      token, _ := tokenResult.Get()
+      return *token, nil
+  }
+  ```
+
+#### 2.3 HTTP Request Pattern
+- **Method**: `s.MakeRequest(test_helpers.HTTPRequestOptions{...})` or `s.MakeRequest(test.HTTPRequestOptions{...})`
+- **Options**: `Method`, `Path`, `Body`, `AuthToken` (optional, auto-injected if available)
+- **Response**: `*httptest.ResponseRecorder`
+
+#### 2.4 Response Parsing Pattern
+Two patterns available based on scenario requirements:
+
+**Pattern A: Typed Response Parsing** (Use when validating specific typed fields)
+- **Function**: `test_helpers.ParseDataResponseT[T](body []byte)` or `test.ParseDataResponseT[T](body []byte)`
+- **Returns**: Typed response struct (e.g., `*apimodels.PermissionResponse`)
+- **Usage**: When you need to validate specific fields of a response model
+- **Example**: 
+  ```go
+  response, err := test_helpers.ParseDataResponseT[apimodels.PermissionResponse](w.Body.Bytes())
+  s.Require().NoError(err)
+  s.Assert().Equal("TC005_FETCH_PERM", response.Code)
+  ```
+
+**Pattern B: Generic JSON Parsing** (Use for simple checks or when structure varies)
+- **Function**: `test_helpers.ParseJSONResponse()` or `test.ParseJSONResponse()`
+- **Returns**: `map[string]interface{}`
+- **Usage**: When checking existence, simple values, or when response structure may vary
+- **Example**:
+  ```go
+  response, err := test_helpers.ParseJSONResponse(w.Body.Bytes())
+  s.Require().NoError(err)
+  s.Assert().NotNil(response["data"])
+  ```
+
+**Decision Rule**:
+- Use **Pattern A** (`ParseDataResponseT[T]`) when:
+  - Validating specific typed response fields
+  - Response structure is well-defined
+  - Type safety is important
+- Use **Pattern B** (`ParseJSONResponse`) when:
+  - Checking response existence or simple values
+  - Response structure may vary
+  - Error responses or generic checks
+
+#### 2.5 API Request Model Pattern
+- **Location**: `internal/models/apimodels/` package
+- **Usage**: Use API request body structs for HTTP request bodies
+- **Pattern**: Import and use structs like `apimodels.CreatePermissionRequestBody`
+- **Rule**: NEVER use `map[string]interface{}` for request bodies
+- **Example**: 
+  ```go
+  body := &apimodels.CreatePermissionRequestBody{
+      Code:        test.TestPermissionCode1,
+      Description: test.TestPermissionDescription1,
+  }
+  ```
+
+#### 2.6 Test Data Usage Pattern
+- **Source**: All data from `test.data.go` (exported variables)
+- **Naming**: `test.Users1`, `test.Application1`, etc.
+- **Builders**: Use builder functions if available (e.g., `test.CreateTestApplicationRequest()`)
+- **Rule**: NEVER hardcode test data in test files
+- **Combination**: Use test data constants with API request models
+
+#### 2.7 Assertion Pattern
+- **s.Require()**: Use for critical assertions that must pass (stops test execution on failure)
+  - Status code checks: `s.Require().Equal(http.StatusOK, w.Code)`
+  - Response parsing errors: `s.Require().NoError(err)`
+  - Critical data existence: `s.Require().True(ok)`, `s.Require().NotNil(...)`
+- **s.Assert()**: Use for non-critical assertions (continues test execution on failure)
+  - Field value validations: `s.Assert().Equal(expected, actual)`
+  - Optional field checks: `s.Assert().NotEmpty(...)`, `s.Assert().NotNil(...)`
+- **Decision Rule**: Use `s.Require()` for setup/parsing, `s.Assert()` for validations
+
+---
+
+### PHASE 3: TEST GENERATION
+
+Generate test file following these rules:
+
+#### 3.1 File Location & Naming
+- **Location**: Same directory as controller file
+- **Filename**: `<controller_filename>_test.go`
+  - `application.go` → `application_test.go`
+  - `user_controller.go` → `user_controller_test.go`
+- **Package**: `controllers_test` (NOT `controllers`)
+
+#### 3.2 File Structure Template
+```go
+package controllers_test
+
+import (
+    "net/http"
+    "[module]/internal/models/apimodels"
+    "[module]/internal/test"
+    "[module]/internal/test_helpers"  // if used
+)
+
+func (s *ControllerTestSuite) TestControllerMethod() {
+    s.Run("TC-001: Successful Operation with Valid Data - Typed Response", func() {
+        body := &apimodels.CreatePermissionRequestBody{
+            Code:        test.TestPermissionCode1,
+            Description: test.TestPermissionDescription1,
+        }
+        
+        w := s.MakeRequest(test_helpers.HTTPRequestOptions{
+            Method: "POST",
+            Path:   test.CreatePermissionEndpointUri,
+            Body:   body,
+        })
+        
+        s.Require().Equal(http.StatusOK, w.Code)
+        response, err := test_helpers.ParseDataResponseT[apimodels.PermissionResponse](w.Body.Bytes())
+        s.Require().NoError(err)
+        s.Assert().Equal(test.TestPermissionCode1, response.Code)
+        s.Assert().Equal(test.TestPermissionDescription1, *response.Description)
+    })
+    
+    s.Run("TC-002: Successful Operation - Generic Response Check", func() {
+        body := &apimodels.CreatePermissionRequestBody{
+            Code:        test.TestPermissionCode2,
+            Description: test.TestPermissionDescription2,
+        }
+        
+        w := s.MakeRequest(test_helpers.HTTPRequestOptions{
+            Method: "POST",
+            Path:   test.CreatePermissionEndpointUri,
+            Body:   body,
+        })
+        
+        s.Require().Equal(http.StatusOK, w.Code)
+        response, err := test_helpers.ParseJSONResponse(w.Body.Bytes())
+        s.Require().NoError(err)
+        s.Assert().NotNil(response["data"])
+        
+        data, ok := response["data"].(map[string]interface{})
+        s.Require().True(ok)
+        s.Assert().NotEmpty(data["id"])
+    })
+    
+    s.Run("TC-003: Missing Required Field - Code", func() {
+        body := &apimodels.CreatePermissionRequestBody{
+            Description: test.TestPermissionDescription1,
+            // Code field intentionally omitted
+        }
+        
+        w := s.MakeRequest(test_helpers.HTTPRequestOptions{
+            Method: "POST",
+            Path:   test.CreatePermissionEndpointUri,
+            Body:   body,
+        })
+        
+        s.Require().Equal(http.StatusBadRequest, w.Code)
+    })
+    
+    s.Run("TC-004: Error Response Validation", func() {
+        body := &apimodels.CreatePermissionRequestBody{
+            Code: test.TestPermissionCode1,
+            // Description field intentionally omitted
+        }
+        
+        w := s.MakeRequest(test_helpers.HTTPRequestOptions{
+            Method: "POST",
+            Path:   test.CreatePermissionEndpointUri,
+            Body:   body,
+        })
+        
+        s.Require().Equal(http.StatusBadRequest, w.Code)
+        response, err := test_helpers.ParseJSONResponse(w.Body.Bytes())
+        s.Require().NoError(err)
+        s.Assert().NotNil(response["errors"])
+    })
+}
+```
+
+**Key Points**:
+- **Multiple `s.Run()` calls**: One test method can contain multiple subtests
+- **API Request Models**: Use `apimodels.*RequestBody` structs, NOT `map[string]interface{}`
+- **Test Data**: Use constants from `test.data.go` to populate request models
+- **Conditional Subtests**: Use multiple `s.Run()` calls for different scenarios (success, validation failures, business logic failures)
+
+#### 3.3 Test Case Implementation Rules
+- **One test method per API endpoint** in the controller
+- **Multiple subtests per test method**: Use multiple `s.Run()` calls for different scenarios
+- **One subtest per scenario** from the scenario file
+- **Test Case ID**: Use exact TC-ID from scenario (e.g., `"TC-001: Description"`)
+- **Request Body**: Use API request model structs from `apimodels` package
+  - ✅ **CORRECT**: `&apimodels.CreatePermissionRequestBody{Code: "...", Description: "..."}`
+  - ❌ **WRONG**: `map[string]interface{}{"code": "...", "description": "..."}`
+- **Input**: Use scenario's input payload (convert to API request model struct)
+- **Preconditions**: Set up database state if required by scenario
+- **Expected Response**: Match scenario's expected status code and body structure
+- **Response Parsing**: Choose based on scenario requirements:
+  - **Typed parsing** (`ParseDataResponseT[T]`): When validating specific typed fields
+  - **Generic parsing** (`ParseJSONResponse`): When checking existence or simple values
+- **Assertions**: 
+  - Use `s.Require()` for critical checks (status code, parsing errors, data existence)
+  - Use `s.Assert()` for field validations and non-critical checks
+  - Validate all fields mentioned in scenario
+
+#### 3.4 Code Quality Rules
+- **Minimal Comments**: Code should be self-explanatory
+- **Descriptive Names**: Clear test function and variable names
+- **DRY Principle**: Reuse test data and helpers
+- **Consistent Structure**: Follow the same pattern across all tests
+- **Error Handling**: Use `s.Require()` for critical assertions, `s.Assert()` for optional checks
+
+#### 3.5 What NOT to Do
+- ❌ Do NOT use `t *testing.T` → Use `s *ControllerTestSuite`
+- ❌ Do NOT use `t.Run()` → Use `s.Run()`
+- ❌ Do NOT use `require`/`assert` directly → Use `s.Require()`/`s.Assert()`
+- ❌ Do NOT use `map[string]interface{}` for request bodies → Use API request model structs
+- ❌ Do NOT hardcode test data → Use `test.data.go`
+- ❌ Do NOT create imaginary code → Only use existing models/types/functions
+- ❌ Do NOT assume module name → Use actual module from `go.mod`
+- ❌ Do NOT add features not in project → Only include what exists
+
+---
+
+## TOKEN MANAGEMENT FOR TESTS
+
+### Token Generation Helper (Create if Missing)
+
+After analyzing project's token management, create/update token generation helper:
+
+**Location**: `internal/test/suite.go` or `internal/test_helpers/`
+
+**Pattern** (adapt to project's actual token function):
+```go
+func GenerateAuthToken(app application.Application, userID uuid.UUID) (string, error) {
+    // Use project's actual token generation function
+    // Match project's token claims structure
+    // Match project's token duration
+    tokenResult := utils.GenerateTokenUsingUserId(app, userID)
+    if tokenResult.IsError() {
+        return "", tokenResult.Error()
+    }
+    token, _ := tokenResult.Get()
+    return *token, nil
+}
+```
+
+**Key Points**:
+- Use project's actual token generation function name
+- Match project's token claims (e.g., `user`, `phoneNumber`, `iss`, `exp`)
+- Match project's token duration (usually 4-5 hours for tests)
+- Use project's issuer from config
+- Handle errors using project's error pattern (mo.Result, fault, etc.)
+
+**Token Reuse**:
+- Generate token once in `SetupSuite()` or `PreloadBaseData()`
+- Store in suite struct: `authToken string`
+- Auto-inject in `MakeRequest()` if `AuthToken` is nil
+
+---
+
+## VALIDATION CHECKLIST
+
+Before finalizing, verify:
+
+- [ ] Module name matches `go.mod`
+- [ ] All imports are correct and exist (including `apimodels` package)
+- [ ] Request bodies use API request model structs (NOT `map[string]interface{}`)
+- [ ] Response parsing uses appropriate pattern:
+  - [ ] `ParseDataResponseT[T]` for typed field validations
+  - [ ] `ParseJSONResponse` for generic checks
+- [ ] Assertions use correct pattern:
+  - [ ] `s.Require()` for critical checks (status, parsing, existence)
+  - [ ] `s.Assert()` for field validations
+- [ ] Token generation matches project's pattern
+- [ ] Test data comes from `test.data.go`
+- [ ] Test structure matches project's suite pattern
+- [ ] Multiple `s.Run()` calls used for different scenarios
+- [ ] All test cases from scenario file are implemented
+- [ ] No hardcoded test data
+- [ ] No imaginary code (models, types, functions)
+- [ ] HTTP request pattern matches project's helper function
+
+
+## COMMON PATTERNS REFERENCE
+
+### Pattern 1: go-gin-sample (boilerplate)
+- Module: `boilerplate`
+- Base Suite: `test.AppBaseSuite` extends `test_helpers.BaseSuite`
+- Token: `GenerateAuthToken(app, userID)` → `utils.GenerateTokenUsingUserId()`
+- Claims: `{"user": userId, "iss": issuer, "exp": expiration}`
+- Duration: 4 hours
+- Request: `s.MakeRequest(test_helpers.HTTPRequestOptions{...})`
+- Request Body: Use `apimodels.*RequestBody` structs (e.g., `&apimodels.CreatePermissionRequestBody{...}`)
+- Response Parsing:
+  - Typed: `test_helpers.ParseDataResponseT[apimodels.PermissionResponse](w.Body.Bytes())`
+  - Generic: `test_helpers.ParseJSONResponse(w.Body.Bytes())`
+- Assertions:
+  - Critical: `s.Require().Equal(http.StatusOK, w.Code)`, `s.Require().NoError(err)`
+  - Validations: `s.Assert().Equal(expected, response.Code)`, `s.Assert().NotNil(response["data"])`
+- Multiple Subtests: Use multiple `s.Run()` calls within one test method
+
+### Pattern 2: phoenix.go
+- Module: `phoenix`
+- Base Suite: `test.BaseSuite`
+- Token: Generated in `PreloadBaseData()`
+- Request: `s.MakeRequest(test.HTTPRequestOptions{...})`
+- Request Body: Use API request model structs from `apimodels` package
+- Response: `test.ParseJSONResponse()`
+
+**Action**: Identify which pattern matches the target project and follow it exactly. Always use API request models, never `map[string]interface{}`.
+
+---
+
+## SUMMARY
+
+1. **ANALYZE FIRST**: Complete Phase 1 analysis before any code generation
+2. **MATCH REALITY**: Use actual project patterns, not assumptions
+3. **FOLLOW PATTERNS**: Match existing test infrastructure exactly
+4. **USE API MODELS**: Use `apimodels.*RequestBody` structs, NOT `map[string]interface{}`
+5. **MULTIPLE SUBTESTS**: Use multiple `s.Run()` calls for different scenarios
+6. **RESPONSE PARSING**: Choose `ParseDataResponseT[T]` for typed fields or `ParseJSONResponse` for generic checks
+7. **ASSERTIONS**: Use `s.Require()` for critical checks, `s.Assert()` for validations
+8. **USE SCENARIOS**: Implement all test cases from scenario file
+9. **VALIDATE**: Check imports, module names, and function names
+10. **NO ASSUMPTIONS**: Only use code that exists in the project
+
+---
+
+## INPUT FORMAT
+
+User provides:
+- Controller file (required)
+- Scenario file from `scenarios/<api>.md` (required)
+- Service/repository interfaces (optional, for context)
+
+Your task:
+1. Complete Phase 1 analysis
+2. Recognize patterns (Phase 2)
+3. Generate test file (Phase 3)
+4. Validate against checklist

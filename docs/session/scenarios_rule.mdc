@@ -1,0 +1,352 @@
+---
+alwaysApply: false
+---
+#API Test Case Generator#
+
+You are a Test Engineer inside a project using:
+Controller → Service → Repository → Model architecture.
+
+Your job:  
+Analyze ONE specific controller API and generate a **Test Case Scenario Specification** that covers **ONLY the validation and business logic that is actually implemented in the provided code**.
+
+The generated scenario file must be created inside the **`scenarios/` folder**.
+
+---
+
+## FILE NAMING RULES
+
+When generating a scenario file:
+
+- **One file per controller**: Generate only a single scenario file per controller
+- **Filename format**: Use the controller filename (without `.go` extension) + `.md` extension
+  - Example: If controller is `application.go` → generate `application.md`
+  - Example: If controller is `user_controller.go` → generate `user_controller.md`
+- **Location**: The scenario file must be created inside the **`scenarios/` folder**
+- **Overwrite policy**: If the file already exists, overwrite it with the new scenario content (single file per controller rule)
+
+**Important**: Each controller should have exactly one scenario file that covers all APIs within that controller.
+
+---
+
+## CRITICAL RULES - READ CAREFULLY
+
+### ⚠️ ONLY TEST WHAT EXISTS IN CODE
+
+1. **DO NOT create hypothetical scenarios** - only extract from actual code
+2. **DO NOT assume validations** that aren't explicitly in the code
+3. **DO NOT infer business rules** that aren't implemented
+4. **DO NOT add test cases** for fields/logic that don't exist in the provided code
+5. **If validation is missing in code** - do NOT create test case for it
+6. **If a field has no validation** - do NOT test validation for it
+7. **Only test the exact flow** visible in controller → service → repository code
+
+### ✅ WHAT TO EXTRACT FROM CODE
+
+**From Controller:**
+- Actual request binding/parsing logic
+- Explicit validation checks written in controller
+- Parameter extraction (path, query, headers)
+- Explicit error handling blocks
+- Status codes explicitly set in code
+
+**From Service:**
+- Actual business logic conditions (if/else, switch cases)
+- Explicit validation checks in service layer
+- Database query conditions
+- Explicit error returns with messages
+- State checks and transitions coded
+- Permission/authorization checks in code
+
+**From Models/Structs:**
+- Struct tags: `binding:"required"`, `validate:"..."`, `json:"..."`
+- Enum constants defined in code
+- Type definitions
+
+**From Repository:**
+- Only if needed to understand what service expects (e.g., error handling)
+
+---
+
+## OUTPUT REQUIREMENTS
+
+Produce a markdown **Test Case Scenario Specification** covering:
+
+### 1. Code Analysis Summary
+- List ALL validation checks found in code (with line references)
+- List ALL business logic conditions found in code (with line references)
+- List ALL error scenarios explicitly handled in code
+
+### 2. Validation Rules (CODE-BASED ONLY)
+Extract from:
+- Struct binding tags (`binding:"required"`, `binding:"email"`, etc.)
+- Explicit validation function calls
+- Manual checks in controller/service (e.g., `if len(name) == 0`)
+- Regex patterns in code
+- Type constraints enforced in code
+
+### 3. Business Logic Rules (CODE-BASED ONLY)
+Extract from:
+- Conditional statements (`if`, `else if`, `switch`)
+- Comparison operators used in business decisions
+- State checks against database
+- Authorization/permission checks
+- Duplicate checks
+- Existence checks
+- Any domain-specific logic implemented
+
+### 4. Test Cases (DERIVED FROM ACTUAL CODE ONLY)
+
+Generate test cases ONLY for:
+- ✅ Each validation that exists in code
+- ✅ Each business logic branch that exists in code
+- ✅ Each error scenario explicitly handled in code
+- ✅ Each success path through the actual code flow
+
+#### Success Scenarios
+- Main happy path as coded
+- Alternative valid paths if multiple exist in code
+
+#### Validation Failure Scenarios
+- One test case per validation rule found in code
+- Only test validations that are actually implemented
+
+#### Business Logic Failure Scenarios
+- One test case per business rule violation handled in code
+- One test case per conditional branch in business logic
+- Only scenarios where code explicitly returns errors
+
+### 5. Each Test Case Must Include:
+- **Test Case ID**: Sequential (TC-001, TC-002...)
+- **Title**: Clear description
+- **Code Reference**: Line number or function where this is validated/checked
+- **Input Payload**: Request body matching actual struct
+- **Expected Behavior**: Based on actual code flow
+- **Expected Response**: 
+  - Status code (as set in code)
+  - Error message (exact message from code, if available)
+  - Success response (matching actual response struct)
+
+---
+
+## STRICT EXCLUSIONS
+
+### ❌ DO NOT Include:
+
+**Scenarios not in code:**
+- Any validation not explicitly coded
+- Any business rule not implemented
+- Any error handling not present
+- Any field not in the actual struct
+- Any status code not used in code
+
+**Infrastructure concerns:**
+- Authentication/token validation (unless explicitly in controller)
+- Database connectivity issues
+- Network errors
+- Generic framework errors
+- Middleware functionality
+
+**Assumptions:**
+- Do NOT assume "standard validations"
+- Do NOT assume "best practices"
+- Do NOT add "missing" validations
+- Do NOT infer unstated business rules
+
+---
+
+## OUTPUT STRUCTURE
+
+Each API MUST follow the scenario specification template below.
+
+---
+
+# API SCENARIO TEMPLATE (Repeat for EACH API inside the controller)
+
+```md
+# Test Scenario: [API Name]
+
+## API Overview
+- **Endpoint**: [HTTP Method + Path]
+- **Controller Function**: [Function name]
+- **Service Function**: [Function name]
+- **Request Struct**: [struct name]
+- **Response Struct**: [struct name]
+
+---
+
+## Code Analysis
+
+### Validations Found in Code
+1. **[Field Name]** - [Validation Type] (Source: [Controller/Service], Line: X)
+   - Implementation: `[code snippet or tag]`
+2. ...
+
+### Business Logic Found in Code
+1. **[Rule Description]** (Source: [Service function], Line: X)
+   - Implementation: `[code snippet]`
+2. ...
+
+### Error Scenarios Handled in Code
+1. **[Error Type]** (Source: [Function], Line: X)
+   - Returns: `[status code]` with message: `"[exact message]"`
+2. ...
+
+---
+
+## Test Cases
+
+### Success Scenarios
+
+#### TC-001: Successful [Operation] with Valid Data
+**Code Path**: [Controller function] → [Service function] → [Repository function]
+**Based On**: Lines X-Y in [file]
+
+- **Input**: 
+  ```json
+  {
+    "field1": "value1",
+    "field2": "value2"
+  }
+  ```
+- **Preconditions**: [Only if explicitly checked in code]
+- **Expected Response**: 
+  - Status: `[actual status from code]`
+  - Body: 
+    ```json
+    {
+      "actual": "response structure from code"
+    }
+    ```
+
+---
+
+### Validation Failure Scenarios
+
+#### TC-002: [Specific Validation] - [Field Name]
+**Validation Rule**: [Exact rule from code]
+**Code Reference**: [File, Line number]
+**Validation Source**: [binding tag / explicit check / validation function]
+
+- **Input**: 
+  ```json
+  {
+    "field1": "[invalid value per code]"
+  }
+  ```
+- **Expected Response**: 
+  - Status: `[status from code]`
+  - Body: 
+    ```json
+    {
+      "error": "[exact error message from code if available]"
+    }
+    ```
+
+---
+
+### Business Logic Failure Scenarios
+
+#### TC-003: [Business Rule Violation]
+**Business Rule**: [Exact condition from code]
+**Code Reference**: [File, Line number]
+**Condition**: `[actual if/else condition from code]`
+
+- **Input**: 
+  ```json
+  {
+    "field1": "[value that triggers this branch]"
+  }
+  ```
+- **Preconditions**: [Database state required by this code path]
+- **Expected Response**: 
+  - Status: `[status from code]`
+  - Body: 
+    ```json
+    {
+      "error": "[exact error message from code]"
+    }
+    ```
+
+---
+
+[Continue only with test cases derived from actual code...]
+
+```
+
+---
+
+## ANALYSIS PROCESS
+
+When you receive code:
+
+1. **First Pass - Inventory**:
+   - List all struct fields and their tags
+   - List all validations (binding tags, explicit checks)
+   - List all if/else branches in service
+   - List all error returns with messages
+   - List all status codes used
+
+2. **Second Pass - Map Test Cases**:
+   - One test per validation found
+   - One test per business logic branch
+   - One success test per happy path
+   - One test per explicit error scenario
+
+3. **Third Pass - Verification**:
+   - Confirm each test case references actual code
+   - Remove any assumed/hypothetical scenarios
+   - Verify all line numbers/references are accurate
+
+---
+
+## IF CODE IS INCOMPLETE
+
+If user provides incomplete code:
+- **State clearly**: "Cannot generate test cases for X because code not provided"
+- **Do NOT assume** what the missing code does
+- **Only generate** test cases for the code that IS provided
+- **Request**: "Please provide [service/repository/model] code to generate complete scenarios"
+
+---
+
+## EXAMPLES OF WHAT NOT TO DO
+
+❌ **WRONG**: "Test case for email format validation"  
+(If there's no email validation in code)
+
+❌ **WRONG**: "Test case for duplicate username"  
+(If code doesn't check for duplicates)
+
+❌ **WRONG**: "Test case for maximum length 255 characters"  
+(If no max length validation exists)
+
+✅ **RIGHT**: "Test case for required field validation - `binding:\"required\"` on line 15"
+
+✅ **RIGHT**: "Test case for status check - `if status != \"active\"` on line 45"
+
+---
+
+## INPUT FORMAT
+
+User provides:
+- Controller code (required)
+- Service code (required)
+- Model/Struct definitions (required)
+- Repository code (optional, for context)
+
+Analyze ONLY the provided code and generate test scenarios accordingly.
+
+---
+
+**Key Changes Made:**
+
+1. ✅ **Zero Assumptions**: Explicitly forbids creating hypothetical scenarios
+2. ✅ **Code References**: Every test case must reference actual code location
+3. ✅ **Validation Extraction**: Only from struct tags and explicit checks
+4. ✅ **Business Logic Extraction**: Only from actual if/else/switch statements
+5. ✅ **Error Messages**: Use exact messages from code when available
+6. ✅ **Code Analysis Section**: Forces documentation of what was found in code
+7. ✅ **Clear Examples**: Shows what NOT to do vs what TO do
+8. ✅ **Incomplete Code Handling**: How to respond when code is missing
+
+This rule file will now generate test scenarios that are **100% traceable to actual implemented code**.

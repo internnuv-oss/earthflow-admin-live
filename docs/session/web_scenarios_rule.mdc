@@ -1,0 +1,199 @@
+---
+alwaysApply: false
+---
+
+# WEB Frontend Test Scenario Generator
+
+You are a Test Engineer analyzing a React admin dashboard (Field Commander Admin).
+Architecture is typically: **Page → Components → Hooks → Supabase/API client**.
+
+**Job:** Generate a **Test Case Scenario Specification** covering **ONLY** validation and business logic **ACTUALLY implemented** in the provided frontend code.
+
+---
+
+## HOW TO USE THIS RULE (every module)
+
+In Agent mode, provide:
+
+1. This rule file: `@docs/session/web_scenarios_rule.mdc`
+2. **Module ID** (e.g. `dealers`)
+3. **Output path**: `scenarios/web/<module-id>.md` (overwrite if exists — one file per module)
+4. Primary source files (Page + related components/hooks)
+5. Optional docs for cross-check only (do **NOT** invent TCs from docs)
+
+**Example prompt:**
+
+```
+Follow @docs/session/web_scenarios_rule.mdc
+
+## Target
+- Module ID: dealers
+- Output path: scenarios/web/dealers.md
+- Overwrite if exists
+
+## Sources (code only — primary)
+@src/pages/DealersPage.tsx
+@src/components/DealerTable.tsx
+@src/components/DealerDetailSheet.tsx
+(and any other files this module imports for create/edit/list/permission/validation)
+
+## Optional cross-check only (do NOT invent TCs from docs)
+@docs/business-rules/dealers.md
+@docs/api-requirements-web/dealers.md
+```
+
+---
+
+## CRITICAL RULES
+
+1. **DO NOT** create hypothetical scenarios
+2. **DO NOT** assume validations not in code
+3. **DO NOT** infer business rules not implemented in UI/hooks
+4. If validation is missing in frontend — **do NOT** invent it
+5. Only test the exact **UI → handler → API call** flow visible in code
+6. If related component/hook code is missing, say so and only cover provided code
+7. Optional docs are for naming/cross-check hints only — never invent TCs from them
+
+---
+
+## EXTRACT FROM CODE
+
+### From Pages / Components
+- Form fields and default values
+- Explicit validation (zod, manual `if` checks, `required` attrs, disabled conditions)
+- Conditional rendering / branches (draft vs submitted, tabs, buttons shown/hidden)
+- Permission / `can_edit` / role checks
+- Success and error handling (toast messages, navigation, refetch)
+- Filters, search, pagination, export/print **if coded**
+
+### From API usage
+- `supabase.from` / `rpc` / `functions.invoke` / `fetch` URLs
+- Request payload shape built in UI
+- Query filters (`.eq`, `.in`, status filters, etc.)
+- What UI does on success vs error (do **not** invent backend status codes)
+
+### Related imports to chase
+- Hooks (`usePermissions`, `useAuth`, custom data hooks)
+- Shared tables (`DataTable`), sheets, dialogs
+- Validation helpers / schemas imported by the module
+
+---
+
+## FILE RULES
+
+- **One scenario file per module**
+- Filename: `<module-id>.md` inside `scenarios/web/`
+- Cover **ALL** user-facing operations in that module that exist in code:
+  list, view, create, update, delete, approve, export, settings links, etc.
+- **Overwrite** if the file already exists
+
+---
+
+## OUTPUT STRUCTURE
+
+Use this template for **EACH** major operation found in code:
+
+```md
+# Test Scenario: [Module] — [Operation Name]
+
+## Operation Overview
+- **Module ID**: <module-id>
+- **UI Entry**: [route / page / button]
+- **Primary files**: [paths]
+- **Handler / function**: [name]
+- **API / data ops**: [e.g. supabase.from('dealers').update(...)]
+- **Layer**: WEB
+
+## Code Analysis
+
+### Validations Found in Code
+1. **[Field]** - [rule] (Source: file, approx location)
+   - Implementation: `snippet`
+
+### Business Logic Found in Code
+1. **[Rule]** (Source: ...)
+   - Implementation: `snippet`
+
+### Error / Edge Paths Handled in UI
+1. **[Case]** — UI shows: `[exact toast/message if any]`
+
+### Permissions / Visibility
+1. **[Gate]** — who can see/do this (from code only)
+
+## Test Cases
+Use IDs: WEB-TC-001, WEB-TC-002, ... (continue numbering across the whole module file)
+
+### Success Scenarios
+#### WEB-TC-001: ...
+- **Code Path**: Page → Component → API call
+- **Based On**: [file + logic]
+- **Preconditions**: [only if checked in code]
+- **User steps**: [UI actions]
+- **Input**: field values / payload built by UI
+- **Expected UI behavior**: ...
+- **Expected API call** (if any): method/table/filters/body as built in code
+
+### Validation Failure Scenarios
+#### WEB-TC-00N: ...
+- **Validation Rule**: exact from code
+- **Input**: invalid value per code
+- **Expected UI behavior**: message / block submit / etc.
+
+### Business Logic Failure / Branch Scenarios
+#### WEB-TC-00N: ...
+- **Condition**: exact if/else from code
+- **Expected UI behavior**: ...
+```
+
+At the **end of the module file**, add:
+
+```md
+## Backend/App Mapping Hints
+- WEB-TC-001 → list_<entity>
+- WEB-TC-00N → update_<entity>_draft
+(Only keys that match operations you found — do not invent.)
+```
+
+---
+
+## STRICT EXCLUSIONS
+
+- No backend-only rules not reflected in this UI
+- No auth middleware internals unless coded in these files
+- No network/DB-down generic cases unless UI handles them explicitly
+- No “best practice” validations
+- Do **not** copy backend TC IDs; use `WEB-TC-*`
+- Do **not** invent create/delete/approve flows if the UI has no such buttons/handlers
+
+---
+
+## PROCESS (follow in order)
+
+1. **Inventory** fields, validations, branches, API calls, permissions from code
+2. **Map** one TC per validation / branch / success path / explicit error UI path
+3. **Verify** every TC traces to code; remove assumptions
+4. **Write** `scenarios/web/<module-id>.md` (overwrite if exists)
+
+---
+
+## IF CODE IS INCOMPLETE
+
+- State clearly what cannot be covered because code was not provided
+- Only generate TCs for code that **is** provided
+- Request the missing Page/Component/Hook file names needed for full coverage
+
+---
+
+## EXAMPLES
+
+❌ **WRONG**: Invent GST required validation when `validateForm` never checks GST  
+❌ **WRONG**: Add “approve dealer” TC when there is no approve button/handler  
+❌ **WRONG**: Test DB unique constraint not handled in UI  
+
+✅ **RIGHT**: Toast `"Shop Name is required (Min 2 characters)."` from `validateForm`  
+✅ **RIGHT**: Draft save goes to `drafts` when `status === 'DRAFT'`  
+✅ **RIGHT**: `can_view === false` shows Access Denied UI  
+
+---
+
+**This rule produces scenario files that are 100% traceable to implemented frontend code.**
